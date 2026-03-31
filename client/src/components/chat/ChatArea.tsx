@@ -1,7 +1,121 @@
+import { useEffect, useRef } from "react";
+import { Play, RotateCcw } from "lucide-react";
+import { useChatStore } from "../../stores/chatStore";
+import { useTaskStore } from "../../stores/taskStore";
+import { StatusBadge } from "../shared/StatusBadge";
+import { SystemMessage } from "./SystemMessage";
+import { AgentMessage } from "./AgentMessage";
+import { UserMessage } from "./UserMessage";
+import { HITLCard } from "./HITLCard";
+import { ChatInput } from "./ChatInput";
+
 export function ChatArea() {
+  const { events, isRunning, isInterrupted, startGraph, clearEvents } = useChatStore();
+  const { activeTaskId, tasks } = useTaskStore();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const activeTask = tasks.find((t) => t.id === activeTaskId);
+
+  // 新消息自动滚动到底部
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [events.length]);
+
+  // 未选择任务时的空状态
+  if (!activeTask) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <div className="w-16 h-16 rounded-2xl gradient-brand opacity-20" />
+        <p className="text-text-muted text-sm">选择一个任务开始对话</p>
+        <p className="text-text-disabled text-xs">或在左侧创建新任务</p>
+      </div>
+    );
+  }
+
+  const status = isRunning
+    ? "running"
+    : isInterrupted
+      ? "paused"
+      : events.some((e) => e.type === "task_complete")
+        ? "completed"
+        : "idle";
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center">
-      <p className="text-text-muted text-sm">选择一个任务开始对话</p>
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* 顶部信息栏 */}
+      <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-border-subtle">
+        <div className="flex items-center gap-3 min-w-0">
+          <h2 className="text-base font-bold text-text-primary truncate">
+            {activeTask.name}
+          </h2>
+          <StatusBadge status={status} />
+        </div>
+        <div className="flex items-center gap-2">
+          {!isRunning && (
+            <button
+              onClick={() => {
+                clearEvents();
+                startGraph(activeTask.id);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover"
+            >
+              {events.length > 0 ? (
+                <>
+                  <RotateCcw size={12} />
+                  重新运行
+                </>
+              ) : (
+                <>
+                  <Play size={12} />
+                  运行图谱
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 对话区滚动容器 */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
+        {events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2">
+            <p className="text-text-muted text-sm">点击「运行图谱」启动任务</p>
+          </div>
+        ) : (
+          events.map((event, i) => {
+            switch (event.type) {
+              case "phase_start":
+              case "phase_complete":
+              case "task_complete":
+                return <SystemMessage key={i} event={event} />;
+              case "agent_thinking":
+              case "agent_output":
+                return <AgentMessage key={i} event={event} />;
+              case "hitl_interrupt":
+                return <HITLCard key={i} event={event} />;
+              case "user_response":
+                return <UserMessage key={i} event={event} />;
+              case "error":
+                return <ErrorCard key={i} event={event} />;
+              default:
+                return null;
+            }
+          })
+        )}
+      </div>
+
+      {/* 底部输入区 */}
+      <ChatInput />
+    </div>
+  );
+}
+
+function ErrorCard({ event }: { event: { content?: string; timestamp: string } }) {
+  return (
+    <div className="mx-4 my-2 p-3 border border-status-error/30 bg-status-error/5 rounded-[var(--radius-card)] text-sm text-status-error">
+      {event.content || "发生错误"}
     </div>
   );
 }
