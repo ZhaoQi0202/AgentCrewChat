@@ -1,0 +1,31 @@
+appId: com.agentloom.desktop
+productName: AgentLoom
+copyright: Copyright © 2026 AgentLoom
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+
+extraResources:
+  - from: resources/backend/agentloom-api
+    to: backend
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: public/favicon.svg
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: public/favicon.svg
+  uninstallerIcon: public/favicon.svg
+  installerHeaderIcon: public/favicon.svg
