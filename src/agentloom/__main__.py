@@ -9,6 +9,8 @@ def main() -> None:
     args = parser.parse_args()
     bootstrap.ensure_layout()
     if args.cli:
+        if not bootstrap.check_writable_root():
+            print("安装目录不可写，请将程序放在可写目录后重试。")
         print("AgentLoom")
         return
     from agentloom.ui.app import run_app
