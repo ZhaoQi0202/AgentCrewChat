@@ -4,7 +4,7 @@ const {
   startPythonBackend,
   stopPythonBackend,
   waitForBackend,
-} = require("./python-manager");
+} = require("./python-manager.cjs");
 
 let mainWindow = null;
 
@@ -18,7 +18,7 @@ function createWindow() {
     titleBarStyle: "hidden",
     backgroundColor: "#09090f",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
     },
