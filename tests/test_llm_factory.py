@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -35,6 +37,56 @@ def test_openai_with_key_uses_chat_openai(monkeypatch):
     with patch("agentloom.llm.factory.ChatOpenAI", return_value=fake_real) as mock_cls:
         out = get_chat_model("openai", model="gpt-4o-mini")
     mock_cls.assert_called_once_with(api_key="sk-test", model="gpt-4o-mini")
+    assert out is fake_real
+
+
+def test_default_model_connection_overrides_legacy(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    cfg = tmp_path / "config"
+    (cfg / "model_connections").mkdir(parents=True)
+    conn = {
+        "id": "c1",
+        "name": "x",
+        "provider": "openai_compatible",
+        "base_url": "",
+        "api_key": "sk-conn",
+        "model": "gpt-4o-mini",
+        "enabled": True,
+    }
+    (cfg / "model_connections" / "c1.json").write_text(
+        json.dumps(conn, ensure_ascii=False), encoding="utf-8"
+    )
+    (cfg / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": "1",
+                "mcp_ids": [],
+                "skill_ids": [],
+                "model_connection_ids": ["c1"],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (cfg / "settings.json").write_text(
+        json.dumps(
+            {
+                "default_model_connection_id": "c1",
+                "default_provider": "openai",
+                "openai_api_key": "sk-legacy",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    fake_real = MagicMock(spec=BaseChatModel)
+    with patch("agentloom.llm.factory.ChatOpenAI", return_value=fake_real) as mock_cls:
+        out = get_chat_model(install_root=tmp_path)
+    mock_cls.assert_called_once()
+    call_kw = mock_cls.call_args.kwargs
+    assert call_kw["api_key"] == "sk-conn"
+    assert call_kw["model"] == "gpt-4o-mini"
     assert out is fake_real
 
 

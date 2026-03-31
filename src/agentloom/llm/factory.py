@@ -9,6 +9,10 @@ from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
 
 from agentloom.config.llm_settings_store import load_llm_settings
+from agentloom.config.model_connection_store import load_model_connection
+from agentloom.config.models import ModelConnectionEntry
+from agentloom.paths import config_dir
+from agentloom.llm.connection_check import normalize_openai_base_url
 
 
 class _FixedFakeChatModel(SimpleChatModel):
@@ -30,6 +34,38 @@ def _fake_chat_model() -> BaseChatModel:
     return _FixedFakeChatModel()
 
 
+def _config_root(install_root: Path | None) -> Path:
+    if install_root is not None:
+        return (install_root / "config").resolve()
+    return config_dir()
+
+
+def _chat_from_connection(entry: ModelConnectionEntry, **kwargs: Any) -> BaseChatModel:
+    key = (entry.api_key or "").strip()
+    if not key:
+        return _fake_chat_model()
+    model = (entry.model or "").strip() or (
+        "gpt-4o-mini" if entry.provider == "openai_compatible" else "claude-sonnet-4-20250514"
+    )
+    if entry.provider == "anthropic":
+        root = (entry.base_url or "").strip().rstrip("/")
+        kw: dict[str, Any] = {
+            "api_key": key,
+            "model": kwargs.pop("model", model),
+            **kwargs,
+        }
+        if root:
+            kw["base_url"] = root
+        return ChatAnthropic(**kw)
+    base = normalize_openai_base_url(entry.base_url)
+    return ChatOpenAI(
+        api_key=key,
+        model=kwargs.pop("model", model),
+        base_url=base,
+        **kwargs,
+    )
+
+
 def _resolved_keys(
     install_root: Path | None,
 ) -> tuple[str, str | None, str | None, str, str]:
@@ -43,8 +79,16 @@ def get_chat_model(
     provider: str | None = None,
     *,
     install_root: Path | None = None,
+    connection_id: str | None = None,
     **kwargs: Any,
 ) -> BaseChatModel:
+    s = load_llm_settings(install_root)
+    cfg_root = _config_root(install_root)
+    cid = (connection_id or s.default_model_connection_id or "").strip()
+    if cid:
+        ent = load_model_connection(cid, config_root=cfg_root)
+        if ent is not None and ent.enabled:
+            return _chat_from_connection(ent, **kwargs)
     default_p, oa_key, an_key, oa_model, an_model = _resolved_keys(install_root)
     key = (provider or default_p).lower().strip()
     if key == "openai":

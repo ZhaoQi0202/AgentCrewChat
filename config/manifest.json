@@ -5,5 +5,6 @@
     "find-skills",
     "skill-vetter"
   ],
+  "model_connection_ids": [],
   "shell": null
 }

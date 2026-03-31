@@ -12,6 +12,10 @@
     "skill_ids": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "model_connection_ids": {
+      "type": "array",
+      "items": { "type": "string" }
     }
   },
   "required": ["version", "mcp_ids", "skill_ids"]

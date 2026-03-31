@@ -9,3 +9,4 @@ __pycache__/
 !/data/skills_install/
 !/data/skills_install/**
 config/settings.json
+config/model_connections/*.json

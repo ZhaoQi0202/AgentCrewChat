@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSplitter, QVBoxLayout, 
 
 from agentloom.paths import config_dir, install_root
 from agentloom.ui.dialogs.mcp_editor import McpEditorDialog
-from agentloom.ui.dialogs.model_settings import ModelSettingsDialog
+from agentloom.ui.dialogs.models_manager import ModelsManagerDialog
 from agentloom.ui.dialogs.skills_manager import SkillsManagerDialog
 from agentloom.ui.panels.activity_panel import ActivityPanel
 from agentloom.ui.panels.chat_panel import ChatPanel
@@ -23,7 +23,7 @@ class MainWindow(QWidget):
         self._btn_continue = QPushButton("继续")
         self._btn_continue.setEnabled(False)
         self._btn_add_mcp = QPushButton("添加 MCP")
-        self._btn_model = QPushButton("模型设置")
+        self._btn_model = QPushButton("模型管理")
         self._btn_skills = QPushButton("技能管理")
         bar.addWidget(self._btn_run_graph)
         bar.addWidget(self._btn_continue)
@@ -54,7 +54,7 @@ class MainWindow(QWidget):
         self._btn_run_graph.clicked.connect(self._on_run_graph_clicked)
         self._btn_continue.clicked.connect(self._on_continue_clicked)
         self._btn_add_mcp.clicked.connect(self._on_add_mcp_clicked)
-        self._btn_model.clicked.connect(self._on_model_settings_clicked)
+        self._btn_model.clicked.connect(self._on_models_manager_clicked)
         self._btn_skills.clicked.connect(self._on_skills_manager_clicked)
         self._graph_thread.start()
 
@@ -88,8 +88,8 @@ class MainWindow(QWidget):
         dlg = McpEditorDialog(config_root=config_dir(), parent=self)
         dlg.exec()
 
-    def _on_model_settings_clicked(self) -> None:
-        dlg = ModelSettingsDialog(install_root=self._install_root, parent=self)
+    def _on_models_manager_clicked(self) -> None:
+        dlg = ModelsManagerDialog(install_root=self._install_root, parent=self)
         dlg.exec()
 
     def _on_skills_manager_clicked(self) -> None:

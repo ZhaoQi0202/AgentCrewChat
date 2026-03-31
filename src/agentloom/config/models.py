@@ -34,12 +34,25 @@ class SkillEntry(BaseModel):
     scope: Literal["app", "task"] = "app"
 
 
+class ModelConnectionEntry(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    name: str = ""
+    provider: Literal["openai_compatible", "anthropic"] = "openai_compatible"
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+    enabled: bool = True
+
+
 class ManifestRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     version: str = "1"
     mcp_ids: list[str] = Field(default_factory=list)
     skill_ids: list[str] = Field(default_factory=list)
+    model_connection_ids: list[str] = Field(default_factory=list)
     shell: ShellPolicy | None = None
 
 
@@ -57,6 +70,7 @@ class LoadedConfig(BaseModel):
 class LlmSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
+    default_model_connection_id: str | None = None
     default_provider: Literal["openai", "anthropic"] = "openai"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
