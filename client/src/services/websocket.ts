@@ -2,13 +2,33 @@ import type { ChatEvent } from "../types";
 
 type EventHandler = (event: ChatEvent) => void;
 
+const WS_BASE = "ws://127.0.0.1:9800/api";
+
 export class GraphSocket {
   private ws: WebSocket | null = null;
   private handlers = new Set<EventHandler>();
 
-  connect(sessionId: string) {
+  connect(
+    sessionId: string,
+    options?: {
+      initial?: Record<string, unknown>;
+      onEvent?: EventHandler;
+    },
+  ) {
     this.disconnect();
-    this.ws = new WebSocket(`ws://127.0.0.1:9800/ws/graph/${sessionId}`);
+    this.handlers.clear();
+    if (options?.onEvent) {
+      this.handlers.add(options.onEvent);
+    }
+
+    const url = `${WS_BASE}/ws/graph/${sessionId}`;
+    this.ws = new WebSocket(url);
+
+    this.ws.onopen = () => {
+      if (options?.initial && this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify(options.initial));
+      }
+    };
 
     this.ws.onmessage = (e) => {
       try {

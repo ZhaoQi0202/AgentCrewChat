@@ -5,7 +5,11 @@ from agentloom import bootstrap
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="agentloom")
-    parser.add_argument("--cli", action="store_true", help="headless, no GUI")
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="仅初始化布局后退出，不启动 HTTP 服务",
+    )
     args = parser.parse_args()
     bootstrap.ensure_layout()
     if args.cli:
@@ -13,9 +17,9 @@ def main() -> None:
             print("安装目录不可写，请将程序放在可写目录后重试。")
         print("AgentLoom")
         return
-    from agentloom.ui.app import run_app
+    from agentloom.api.server import main as run_server
 
-    raise SystemExit(run_app())
+    run_server()
 
 
 if __name__ == "__main__":

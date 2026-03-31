@@ -1,4 +1,4 @@
-from agentloom.ui.worker import split_stream_chunk
+from agentloom.graph.stream_util import split_stream_chunk
 
 
 def test_split_node_only() -> None:

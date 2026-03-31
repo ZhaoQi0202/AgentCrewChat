@@ -44,9 +44,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   startGraph: (taskId, userRequest) => {
     const sessionId = crypto.randomUUID();
-    graphSocket.connect(sessionId);
-    graphSocket.subscribe((event) => get().addEvent(event));
-    graphSocket.send({ action: "start", task_id: taskId, user_request: userRequest || taskId });
+    graphSocket.connect(sessionId, {
+      initial: {
+        action: "start",
+        task_id: taskId,
+        user_request: userRequest || taskId,
+      },
+      onEvent: (event) => get().addEvent(event),
+    });
     set({ isRunning: true, isInterrupted: false, events: [] });
   },
 

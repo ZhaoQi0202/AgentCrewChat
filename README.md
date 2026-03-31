@@ -8,7 +8,7 @@
 
 - Python 3.11+
 - [uv](https://github.com/astral-sh/uv)（依赖与任务内虚拟环境）
-- PySide6（三栏界面）
+- Electron + React（`client/`，桌面 UI）
 - LangChain（多厂商 Chat 模型）+ LangGraph（状态与中断）
 - Pydantic（配置校验）
 
@@ -27,21 +27,20 @@ uv sync
 uv run python -m agentloom
 ```
 
-- **GUI（默认）：** 在项目根（或已设置 `AGENTLOOM_ROOT` 的目录）下生成 `config/`、`data/`、`workspaces/`。
-- **无界面：** `uv run python -m agentloom --cli`
+- **HTTP API（默认）：** `uv run python -m agentloom` 启动 FastAPI（默认 `127.0.0.1:9800`），并在项目根（或 `AGENTLOOM_ROOT`）下确保 `config/`、`data/`、`workspaces/` 存在。
+- **仅初始化布局：** `uv run python -m agentloom --cli`
+- **桌面客户端：** 见 `client/README.md`（`npm run dev` / `npm run dev:electron`）
 
-安装根默认可写；若不可写，启动时会提示将程序置于可写目录。
+安装根默认可写；Electron 启动后端前会检查可写性。
 
-## 界面与配置
+## 配置与数据
 
-| 能力 | 说明 |
+| 项 | 说明 |
 |------|------|
-| 左栏 | 任务列表；新建任务会创建 `workspaces/task_<时间戳>_<名称>/` 并初始化 uv 环境 |
-| 中栏 | 对话区（占位） |
-| 右栏 | 图谱运行事件 |
-| 模型设置 | 工具栏「模型设置」→ 写入 `config/settings.json`（**勿提交**，已在 `.gitignore`） |
-| MCP | 「添加 MCP」→ `config/mcp/<id>.json` + 更新 `manifest.json` |
-| 技能管理（应用级） | 此处新增的技能为**全局**，安装到 `data/skills_install/`；执行侧用 `merged_skills_for_agents(task_workspace)` 合并应用级 + 当前任务下 `.agentloom/skills/`（find-skills 安装），同名任务级覆盖应用级 |
+| 任务工作区 | `workspaces/task_<时间戳>_<名称>/`，新建任务时初始化 uv 环境 |
+| 模型 | `client` 内模型页或手写 `config/settings.json`、`config/model_connections/`（**勿提交**，见 `.gitignore`） |
+| MCP | `config/mcp/<id>.json` + `manifest.json` |
+| 技能（应用级） | `data/skills_install/`；与任务下 `.agentloom/skills/` 由 `merged_skills_for_agents` 合并，同名任务级覆盖 |
 
 可选环境变量：**`AGENTLOOM_ROOT`** — 指定安装根（数据与配置均相对该路径）。
 

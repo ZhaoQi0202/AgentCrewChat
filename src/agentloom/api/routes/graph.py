@@ -2,69 +2,93 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue
+import threading
 import uuid
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from agentloom.graph.builder import build_graph
-from agentloom.ui.worker import split_stream_chunk
+from agentloom.graph.stream_util import split_stream_chunk
 from langgraph.types import Command
 
 router = APIRouter(tags=["graph"])
 
-# 活跃的图谱会话（session_id -> graph + config）
 _sessions: dict[str, dict[str, Any]] = {}
+
+_SENTINEL = object()
 
 
 def _ts() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _run_graph_stream(graph: Any, input_obj: Any, cfg: dict) -> list[dict]:
-    """同步运行图谱流并收集事件。"""
-    events: list[dict] = []
+def _iter_graph_events(graph: Any, input_obj: Any, cfg: dict) -> Iterator[dict[str, Any]]:
     for chunk in graph.stream(input_obj, cfg, stream_mode="updates"):
         parts, has_interrupt = split_stream_chunk(chunk)
         for node, upd in parts:
             phase = upd.get("phase", node)
-            # 先发阶段切换事件
-            events.append({
+            yield {
                 "type": "phase_start",
                 "timestamp": _ts(),
                 "phase": phase,
                 "agent": node,
                 "content": f"阶段: {node}",
-            })
-            # 优先使用节点返回的 message 字段作为对话内容
+            }
             content = upd.get("message") or json.dumps(upd, ensure_ascii=False, default=str)
-            events.append({
+            yield {
                 "type": "agent_output",
                 "timestamp": _ts(),
                 "phase": phase,
                 "agent": node,
                 "content": content,
-            })
+            }
         if has_interrupt:
             st = graph.get_state(cfg)
             nxt = st.next[0] if st.next else ""
-            # 获取最近节点的 message 作为中断说明
             interrupt_msg = f"图谱在 {nxt} 阶段中断，等待人工输入"
-            events.append({
+            yield {
                 "type": "hitl_interrupt",
                 "timestamp": _ts(),
                 "phase": nxt,
                 "agent": nxt,
                 "content": interrupt_msg,
-            })
-            return events
-    events.append({
+            }
+            return
+    yield {
         "type": "task_complete",
         "timestamp": _ts(),
         "content": "任务完成",
-    })
-    return events
+    }
+
+
+async def _pump_graph_to_ws(
+    websocket: WebSocket, graph: Any, input_obj: Any, cfg: dict
+) -> None:
+    q: queue.Queue[Any] = queue.Queue()
+
+    def worker() -> None:
+        try:
+            for ev in _iter_graph_events(graph, input_obj, cfg):
+                q.put(ev)
+        except BaseException as exc:
+            q.put({
+                "type": "error",
+                "timestamp": _ts(),
+                "content": str(exc),
+            })
+        finally:
+            q.put(_SENTINEL)
+
+    threading.Thread(target=worker, daemon=True).start()
+    while True:
+        item = await asyncio.to_thread(q.get)
+        if item is _SENTINEL:
+            break
+        await websocket.send_json(item)
 
 
 @router.websocket("/ws/graph/{session_id}")
@@ -88,14 +112,20 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                 cfg = {"configurable": {"thread_id": thread_id}}
                 graph = build_graph()
 
-                # 在线程池中运行同步的图谱流
-                events = await asyncio.to_thread(
-                    _run_graph_stream, graph, {"task_id": task_id, "user_request": user_request}, cfg
-                )
-                for event in events:
-                    await websocket.send_json(event)
+                await websocket.send_json({
+                    "type": "phase_start",
+                    "timestamp": _ts(),
+                    "phase": "pending",
+                    "content": "已收到任务，正在运行图谱…",
+                })
 
-                # 保存会话供后续 resume
+                await _pump_graph_to_ws(
+                    websocket,
+                    graph,
+                    {"task_id": task_id, "user_request": user_request},
+                    cfg,
+                )
+
                 _sessions[session_id] = {"graph": graph, "cfg": cfg}
 
             elif action == "resume":
@@ -113,11 +143,7 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                 cfg = session["cfg"]
                 resume_input = Command(resume=feedback if feedback else {})
 
-                events = await asyncio.to_thread(
-                    _run_graph_stream, graph, resume_input, cfg
-                )
-                for event in events:
-                    await websocket.send_json(event)
+                await _pump_graph_to_ws(websocket, graph, resume_input, cfg)
 
             else:
                 await websocket.send_json({
