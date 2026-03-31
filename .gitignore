@@ -2,3 +2,8 @@
 __pycache__/
 .pytest_cache/
 *.pyc
+/dist/
+/build/
+/workspaces/
+/data/
+config/settings.json

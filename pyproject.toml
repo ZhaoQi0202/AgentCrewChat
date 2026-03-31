@@ -27,4 +27,7 @@ url = "https://mirrors.aliyun.com/pypi/simple"
 default = true
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pyinstaller>=6.19.0",
+    "pytest>=8",
+]

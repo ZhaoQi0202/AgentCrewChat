@@ -15,13 +15,13 @@ from PySide6.QtWidgets import (
 
 from agentloom.config.loader import ConfigValidationError, save_mcp_entry
 from agentloom.config.models import McpEntry
-from agentloom.paths import install_root
+from agentloom.paths import config_dir
 
 
 class McpEditorDialog(QDialog):
     def __init__(self, config_root: Path | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._config_root = install_root() if config_root is None else config_root
+        self._config_root = config_dir() if config_root is None else config_root
         self.setWindowTitle("添加 MCP")
         self._id = QLineEdit(self)
         self._command = QLineEdit(self)

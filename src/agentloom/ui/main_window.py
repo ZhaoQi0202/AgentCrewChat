@@ -1,8 +1,9 @@
 from PySide6.QtCore import Qt, QThread
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSplitter, QVBoxLayout, QWidget
 
-from agentloom.paths import install_root
+from agentloom.paths import config_dir, install_root
 from agentloom.ui.dialogs.mcp_editor import McpEditorDialog
+from agentloom.ui.dialogs.model_settings import ModelSettingsDialog
 from agentloom.ui.panels.activity_panel import ActivityPanel
 from agentloom.ui.panels.chat_panel import ChatPanel
 from agentloom.ui.panels.task_list import TaskListPanel
@@ -12,8 +13,8 @@ from agentloom.ui.worker import GraphRunner
 class MainWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(f"AgentLoom — {install_root()}")
-        root = install_root()
+        self._install_root = install_root()
+        self.setWindowTitle(f"AgentLoom — {self._install_root}")
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         bar = QHBoxLayout()
@@ -21,9 +22,11 @@ class MainWindow(QWidget):
         self._btn_continue = QPushButton("继续")
         self._btn_continue.setEnabled(False)
         self._btn_add_mcp = QPushButton("添加 MCP")
+        self._btn_model = QPushButton("模型设置")
         bar.addWidget(self._btn_run_graph)
         bar.addWidget(self._btn_continue)
         bar.addWidget(self._btn_add_mcp)
+        bar.addWidget(self._btn_model)
         outer.addLayout(bar)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self._task_list = TaskListPanel()
@@ -39,7 +42,7 @@ class MainWindow(QWidget):
         self._chat.message_sent.connect(self._activity.append_line)
 
         self._graph_thread = QThread()
-        self._graph_runner = GraphRunner(install_root=root)
+        self._graph_runner = GraphRunner(install_root=self._install_root)
         self._graph_runner.moveToThread(self._graph_thread)
         self._graph_runner.phase_event.connect(self._on_graph_phase)
         self._graph_runner.interrupted.connect(self._on_graph_interrupted)
@@ -48,6 +51,7 @@ class MainWindow(QWidget):
         self._btn_run_graph.clicked.connect(self._on_run_graph_clicked)
         self._btn_continue.clicked.connect(self._on_continue_clicked)
         self._btn_add_mcp.clicked.connect(self._on_add_mcp_clicked)
+        self._btn_model.clicked.connect(self._on_model_settings_clicked)
         self._graph_thread.start()
 
     def _on_graph_phase(self, node: str, payload: dict) -> None:
@@ -77,5 +81,9 @@ class MainWindow(QWidget):
         self._graph_runner.request_resume()
 
     def _on_add_mcp_clicked(self) -> None:
-        dlg = McpEditorDialog(config_root=root, parent=self)
+        dlg = McpEditorDialog(config_root=config_dir(), parent=self)
+        dlg.exec()
+
+    def _on_model_settings_clicked(self) -> None:
+        dlg = ModelSettingsDialog(install_root=self._install_root, parent=self)
         dlg.exec()

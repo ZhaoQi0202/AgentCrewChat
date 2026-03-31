@@ -48,3 +48,13 @@ class LoadedConfig(BaseModel):
     mcps: list[McpEntry]
     skills: list[SkillEntry]
     shell: ShellPolicy
+
+
+class LlmSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    default_provider: Literal["openai", "anthropic"] = "openai"
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    anthropic_model: str = "claude-sonnet-4-20250514"

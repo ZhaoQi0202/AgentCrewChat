@@ -34,7 +34,7 @@ def test_openai_with_key_uses_chat_openai(monkeypatch):
     fake_real = MagicMock(spec=BaseChatModel)
     with patch("agentloom.llm.factory.ChatOpenAI", return_value=fake_real) as mock_cls:
         out = get_chat_model("openai", model="gpt-4o-mini")
-    mock_cls.assert_called_once_with(model="gpt-4o-mini")
+    mock_cls.assert_called_once_with(api_key="sk-test", model="gpt-4o-mini")
     assert out is fake_real
 
 
@@ -43,5 +43,7 @@ def test_anthropic_with_key_uses_chat_anthropic(monkeypatch):
     fake_real = MagicMock(spec=BaseChatModel)
     with patch("agentloom.llm.factory.ChatAnthropic", return_value=fake_real) as mock_cls:
         out = get_chat_model("anthropic", model="claude-3-5-sonnet-20241022")
-    mock_cls.assert_called_once_with(model="claude-3-5-sonnet-20241022")
+    mock_cls.assert_called_once_with(
+        api_key="sk-ant-test", model="claude-3-5-sonnet-20241022"
+    )
     assert out is fake_real
