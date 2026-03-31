@@ -83,13 +83,14 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
 
             if action == "start":
                 task_id = msg.get("task_id", "api-task")
+                user_request = msg.get("user_request", task_id)
                 thread_id = str(uuid.uuid4())
                 cfg = {"configurable": {"thread_id": thread_id}}
                 graph = build_graph()
 
                 # 在线程池中运行同步的图谱流
                 events = await asyncio.to_thread(
-                    _run_graph_stream, graph, {"task_id": task_id}, cfg
+                    _run_graph_stream, graph, {"task_id": task_id, "user_request": user_request}, cfg
                 )
                 for event in events:
                     await websocket.send_json(event)

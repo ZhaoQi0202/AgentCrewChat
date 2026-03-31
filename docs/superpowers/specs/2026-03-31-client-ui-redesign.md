@@ -101,7 +101,7 @@ Electron Main Process 通过 `child_process.spawn` 启动 PyInstaller 打包的 
 
 固定在最左侧，垂直排列：
 
-- **顶部**: AgentLoom Logo（紫蓝渐变圆角方块 + 白色字母 "A"）
+- **顶部**: AgentLoom Logo（紫蓝渐变圆角方块 + 白色字母 "AgentLoom"）
 - **导航图标**（从上到下）:
   - 任务工作区 — 四格网格图标
   - 模型管理 — 太阳/齿轮图标

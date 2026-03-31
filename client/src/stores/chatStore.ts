@@ -10,7 +10,7 @@ interface ChatStore {
 
   addEvent: (event: ChatEvent) => void;
   clearEvents: () => void;
-  startGraph: (taskId: string) => void;
+  startGraph: (taskId: string, userRequest?: string) => void;
   resumeGraph: (feedback: string) => void;
 }
 
@@ -42,11 +42,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       isInterrupted: false,
     }),
 
-  startGraph: (taskId) => {
+  startGraph: (taskId, userRequest) => {
     const sessionId = crypto.randomUUID();
     graphSocket.connect(sessionId);
     graphSocket.subscribe((event) => get().addEvent(event));
-    graphSocket.send({ action: "start", task_id: taskId });
+    graphSocket.send({ action: "start", task_id: taskId, user_request: userRequest || taskId });
     set({ isRunning: true, isInterrupted: false, events: [] });
   },
 

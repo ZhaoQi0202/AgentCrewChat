@@ -57,7 +57,7 @@ export function ChatArea() {
             <button
               onClick={() => {
                 clearEvents();
-                startGraph(activeTask.id);
+                startGraph(activeTask.id, activeTask.name);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover"
             >
