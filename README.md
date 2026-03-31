@@ -41,6 +41,7 @@ uv run python -m agentloom
 | 右栏 | 图谱运行事件 |
 | 模型设置 | 工具栏「模型设置」→ 写入 `config/settings.json`（**勿提交**，已在 `.gitignore`） |
 | MCP | 「添加 MCP」→ `config/mcp/<id>.json` + 更新 `manifest.json` |
+| 技能管理（应用级） | 此处新增的技能为**全局**，安装到 `data/skills_install/`；执行侧用 `merged_skills_for_agents(task_workspace)` 合并应用级 + 当前任务下 `.agentloom/skills/`（find-skills 安装），同名任务级覆盖应用级 |
 
 可选环境变量：**`AGENTLOOM_ROOT`** — 指定安装根（数据与配置均相对该路径）。
 

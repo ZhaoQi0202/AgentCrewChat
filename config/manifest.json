@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "mcp_ids": [],
+  "skill_ids": [
+    "find-skills",
+    "skill-vetter"
+  ],
+  "shell": null
+}

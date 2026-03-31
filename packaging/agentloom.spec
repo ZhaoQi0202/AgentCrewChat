@@ -8,12 +8,14 @@ for p in [root, *root.parents]:
         root = p
         break
 script = root / "src" / "agentloom" / "__main__.py"
+_res = root / "src" / "agentloom" / "resources"
+_datas = [(_res, "agentloom/resources")] if _res.is_dir() else []
 
 a = Analysis(
     [str(script)],
     pathex=[str(root / "src")],
     binaries=[],
-    datas=[],
+    datas=_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

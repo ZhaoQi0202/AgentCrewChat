@@ -1,0 +1,8 @@
+{
+  "id": "find-skills",
+  "name": "find-skills",
+  "description": "检索可安装的 Agent Skills，安装前须经用户确认。",
+  "skill_dir": "data/skills_install/find-skills",
+  "enabled": true,
+  "scope": "app"
+}

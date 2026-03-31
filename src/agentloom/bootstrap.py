@@ -1,4 +1,5 @@
 from agentloom import paths
+from agentloom.config.builtin_skills import ensure_builtin_skill_configs
 from agentloom.paths import install_root
 
 
@@ -16,3 +17,4 @@ def check_writable_root() -> bool:
 def ensure_layout() -> None:
     for d in (paths.config_dir(), paths.data_dir(), paths.workspaces_dir()):
         d.mkdir(parents=True, exist_ok=True)
+    ensure_builtin_skill_configs()

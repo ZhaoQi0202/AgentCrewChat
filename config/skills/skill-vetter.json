@@ -1,0 +1,8 @@
+{
+  "id": "skill-vetter",
+  "name": "Skill Vetter",
+  "description": "对候选 Skill 做安全与质量审查后再采纳。",
+  "skill_dir": "data/skills_install/skill-vetter",
+  "enabled": true,
+  "scope": "app"
+}

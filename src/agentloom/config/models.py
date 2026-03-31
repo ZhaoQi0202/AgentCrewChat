@@ -28,6 +28,10 @@ class SkillEntry(BaseModel):
 
     id: str
     name: str | None = None
+    description: str | None = None
+    skill_dir: str = ""
+    enabled: bool = True
+    scope: Literal["app", "task"] = "app"
 
 
 class ManifestRecord(BaseModel):
