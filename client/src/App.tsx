@@ -1,35 +1,37 @@
 import { useState } from "react";
-
-type NavPage = "tasks" | "models" | "mcp" | "skills" | "settings";
+import { IconSidebar, type NavPage } from "./components/layout/IconSidebar";
+import { TaskList } from "./components/layout/TaskList";
+import { RightPanel } from "./components/layout/RightPanel";
+import { ChatArea } from "./components/chat/ChatArea";
+import { ModelsPage } from "./components/config/ModelsPage";
+import { McpPage } from "./components/config/McpPage";
+import { SkillsPage } from "./components/config/SkillsPage";
+import { SettingsPage } from "./components/config/SettingsPage";
+import { TitleBar } from "./components/layout/TitleBar";
 
 export default function App() {
   const [page, setPage] = useState<NavPage>("tasks");
+  const isTaskPage = page === "tasks";
+
+  const mainContent: Record<NavPage, React.ReactNode> = {
+    tasks: <ChatArea />,
+    models: <ModelsPage />,
+    mcp: <McpPage />,
+    skills: <SkillsPage />,
+    settings: <SettingsPage />,
+  };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg-base">
-      {/* Column 1: 图标侧栏 占位 */}
-      <aside className="w-14 shrink-0 flex flex-col items-center py-4 gap-2 border-r border-border-subtle bg-bg-surface">
-        <div className="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center text-xs font-bold text-white">
-          AL
-        </div>
-        <div className="flex-1" />
-        <span className="text-text-muted text-[10px]">v0.1</span>
-      </aside>
-
-      {/* Column 2+3: 主区域占位 */}
-      <main className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold gradient-brand-text mb-2">
-            AgentLoom
-          </h1>
-          <p className="text-text-secondary">
-            客户端 UI 重设计 — 脚手架已就绪
-          </p>
-          <p className="text-text-muted text-sm mt-4">
-            当前页面: {page}
-          </p>
-        </div>
-      </main>
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg-base">
+      <TitleBar />
+      <div className="flex flex-1 min-h-0">
+        <IconSidebar activePage={page} onNavigate={setPage} />
+        {isTaskPage && <TaskList />}
+        <main className="flex-1 flex flex-col min-w-0">
+          {mainContent[page]}
+        </main>
+        {isTaskPage && <RightPanel />}
+      </div>
     </div>
   );
 }
