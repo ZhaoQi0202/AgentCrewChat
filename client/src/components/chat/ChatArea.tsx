@@ -8,7 +8,7 @@ import { AgentMessage } from "./AgentMessage";
 import { UserMessage } from "./UserMessage";
 import { HITLCard } from "./HITLCard";
 import { ChatInput } from "./ChatInput";
-import { AGENT_META, AgentId, ChatEvent } from "../../types";
+import { AGENT_META, type AgentId, type ChatEvent } from "../../types";
 
 export function ChatArea() {
   const { events, isRunning, isPaused, isInterrupted, isCollecting, startGraph, pauseGraph, clearEvents, startCollect, confirmStart } = useChatStore();
