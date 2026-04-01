@@ -8,12 +8,16 @@ interface ChatStore {
   isRunning: boolean;
   isPaused: boolean;
   isInterrupted: boolean;
+  isCollecting: boolean;
 
   addEvent: (event: ChatEvent) => void;
   clearEvents: () => void;
   startGraph: (taskId: string, userRequest?: string) => void;
   pauseGraph: () => void;
   resumeGraph: (feedback: string) => void;
+  startCollect: (taskId: string) => void;
+  sendCollectMessage: (content: string) => void;
+  confirmStart: (taskId: string) => void;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -22,6 +26,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isRunning: false,
   isPaused: false,
   isInterrupted: false,
+  isCollecting: false,
 
   addEvent: (event) =>
     set((s) => {
@@ -35,6 +40,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           : isPaused
             ? false
             : s.isRunning;
+      const isCollecting =
+        event.type === "task_complete" || event.type === "error"
+          ? false
+          : s.isCollecting;
       return {
         events: [...s.events, event],
         currentPhase:
@@ -44,6 +53,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         isInterrupted: event.type === "hitl_interrupt",
         isRunning,
         isPaused,
+        isCollecting,
       };
     }),
 
@@ -54,6 +64,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       isRunning: false,
       isPaused: false,
       isInterrupted: false,
+      isCollecting: false,
     }),
 
   startGraph: (taskId, userRequest) => {
@@ -76,5 +87,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   resumeGraph: (feedback) => {
     graphSocket.send({ action: "resume", feedback });
     set({ isInterrupted: false, isPaused: false, isRunning: true });
+  },
+
+  startCollect: (taskId) => {
+    const sessionId = crypto.randomUUID();
+    graphSocket.connect(sessionId, {
+      initial: {
+        action: "collect",
+        task_id: taskId,
+      },
+      onEvent: (event) => get().addEvent(event),
+    });
+    set({ isCollecting: true, isRunning: false, isPaused: false, isInterrupted: false, events: [] });
+  },
+
+  sendCollectMessage: (content) => {
+    get().addEvent({
+      type: "user_response",
+      timestamp: new Date().toISOString(),
+      content,
+    });
+    graphSocket.send({ action: "collect", content });
+  },
+
+  confirmStart: (taskId) => {
+    graphSocket.send({ action: "confirm_start", task_id: taskId });
+    set({ isCollecting: false, isRunning: true });
   },
 }));

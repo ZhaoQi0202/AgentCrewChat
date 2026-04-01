@@ -11,7 +11,7 @@ import { ChatInput } from "./ChatInput";
 import { AGENT_META, AgentId, ChatEvent } from "../../types";
 
 export function ChatArea() {
-  const { events, isRunning, isPaused, isInterrupted, startGraph, pauseGraph, clearEvents } = useChatStore();
+  const { events, isRunning, isPaused, isInterrupted, isCollecting, startGraph, pauseGraph, clearEvents, startCollect, confirmStart } = useChatStore();
   const { activeTaskId, tasks } = useTaskStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -23,6 +23,17 @@ export function ChatArea() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [events.length]);
+
+  // 新项目组自动触发需求收集
+  const prevTaskRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeTask && activeTask.id !== prevTaskRef.current) {
+      prevTaskRef.current = activeTask.id;
+      if (events.length === 0 && !isRunning && !isCollecting) {
+        startCollect(activeTask.id);
+      }
+    }
+  }, [activeTask?.id]);
 
   // 未选择任务时的空状态
   if (!activeTask) {
@@ -56,6 +67,15 @@ export function ChatArea() {
           <StatusBadge status={status} />
         </div>
         <div className="flex items-center gap-2">
+          {isCollecting && (
+            <button
+              onClick={() => confirmStart(activeTask.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover text-status-success"
+            >
+              <Play size={12} />
+              启动项目
+            </button>
+          )}
           {isRunning && !isPaused && (
             <button
               onClick={pauseGraph}
@@ -105,7 +125,7 @@ export function ChatArea() {
 
       {/* 对话区滚动容器 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
-        {events.length === 0 ? (
+        {events.length === 0 && !isCollecting ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
             <p className="text-text-muted text-sm">新项目组已创建，等待启动...</p>
           </div>
