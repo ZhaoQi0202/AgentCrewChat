@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Trash2 } from "lucide-react";
 import { useTaskStore } from "../../stores/taskStore";
 
 export function TaskList() {
-  const { tasks, activeTaskId, loading, fetchTasks, createTask, setActiveTask } =
+  const { tasks, activeTaskId, loading, fetchTasks, createTask, deleteTask, setActiveTask } =
     useTaskStore();
   const [search, setSearch] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -22,6 +22,11 @@ export function TaskList() {
     await createTask(newName.trim());
     setNewName("");
     setIsCreating(false);
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    await deleteTask(id);
   };
 
   return (
@@ -93,7 +98,7 @@ export function TaskList() {
               key={task.id}
               onClick={() => setActiveTask(task.id)}
               className={`
-                w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-all duration-150
+                group w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-all duration-150
                 ${isActive
                   ? "bg-brand-purple/15 border border-brand-purple/20"
                   : "hover:bg-bg-hover border border-transparent"
@@ -106,8 +111,15 @@ export function TaskList() {
                     isActive ? "bg-status-info" : "border border-text-disabled"
                   }`}
                 />
-                <span className="text-sm text-text-primary truncate">
+                <span className="text-sm text-text-primary truncate flex-1">
                   {task.name}
+                </span>
+                <span
+                  role="button"
+                  onClick={(e) => handleDelete(e, task.id)}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-500/15 text-text-muted hover:text-red-400 transition-all shrink-0"
+                >
+                  <Trash2 size={13} />
                 </span>
               </div>
               <p className="text-[11px] text-text-muted mt-1 ml-4 truncate">

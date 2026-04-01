@@ -8,10 +8,11 @@ interface TaskStore {
   loading: boolean;
   fetchTasks: () => Promise<void>;
   createTask: (name: string) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   setActiveTask: (id: string | null) => void;
 }
 
-export const useTaskStore = create<TaskStore>((set) => ({
+export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   activeTaskId: null,
   loading: false,
@@ -30,6 +31,14 @@ export const useTaskStore = create<TaskStore>((set) => ({
   createTask: async (name) => {
     const task = await tasksApi.create(name);
     set((s) => ({ tasks: [task, ...s.tasks], activeTaskId: task.id }));
+  },
+
+  deleteTask: async (id) => {
+    await tasksApi.remove(id);
+    set((s) => ({
+      tasks: s.tasks.filter((t) => t.id !== id),
+      activeTaskId: s.activeTaskId === id ? null : s.activeTaskId,
+    }));
   },
 
   setActiveTask: (id) => set({ activeTaskId: id }),

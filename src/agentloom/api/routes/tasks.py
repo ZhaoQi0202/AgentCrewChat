@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from agentloom.tasks.workspace import create_task, list_tasks
+from agentloom.tasks.workspace import create_task, delete_task, list_tasks, load_meta
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -34,9 +34,14 @@ def _parse_task_dir(path) -> TaskInfo:
         slug = dir_name
         stat = path.stat()
         dt = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+
+    # 优先从 meta.json 读取原始名称
+    meta = load_meta(path)
+    name = meta["name"] if meta and "name" in meta else slug.replace("-", " ").title()
+
     return TaskInfo(
         id=dir_name,
-        name=slug.replace("-", " ").title(),
+        name=name,
         path=str(path),
         modified_at=dt.isoformat(),
     )
@@ -55,3 +60,14 @@ async def new_task(body: TaskCreateRequest) -> TaskInfo:
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     return _parse_task_dir(path)
+
+
+@router.delete("/{task_id}")
+async def remove_task(task_id: str) -> dict:
+    try:
+        delete_task(task_id)
+    except FileNotFoundError:
+        raise HTTPException(404, f"Task not found: {task_id}")
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+    return {"status": "ok"}

@@ -99,6 +99,11 @@ export const tasksApi = {
       method: "POST",
       body: JSON.stringify({ name }),
     }),
+
+  remove: (id: string) =>
+    request<{ status: string }>(`/tasks/${id}`, {
+      method: "DELETE",
+    }),
 };
 
 // ── 健康检查 ────────────────────────────────────────
