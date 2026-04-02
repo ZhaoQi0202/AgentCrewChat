@@ -34,6 +34,7 @@ def run_react_agent(
     workspace_path: str,
     thread_id: str = "",
     max_iterations: int = MAX_ITERATIONS,
+    retry_feedback: str | None = None,
 ) -> dict[str, Any]:
     """运行一个 ReAct Agent 完成指定任务。
 
@@ -66,6 +67,13 @@ def run_react_agent(
         f"5. 不要使用 Markdown 标题格式，像在工作群里汇报一样说话\n"
     )
 
+    if retry_feedback:
+        system_prompt += (
+            f"\n## ⚠️ 重要：上一次执行未通过审核\n"
+            f"审核反馈：{retry_feedback}\n"
+            f"请根据反馈改进你的实现。\n"
+        )
+
     messages: list = [
         SystemMessage(content=system_prompt),
         HumanMessage(content=f"请开始执行任务「{task_name}」"),
@@ -78,12 +86,16 @@ def run_react_agent(
     total_tool_calls = 0
 
     # 发送开始事件
+    start_msg = (
+        f"收到审核反馈，重新修改「{task_name}」🔧" if retry_feedback
+        else f"收到任务「{task_name}」，马上开始搞！💪"
+    )
     emit_event(thread_id, {
         "type": "agent_output",
         "timestamp": _ts(),
         "phase": "experts",
         "agent": "experts",
-        "content": f"收到任务「{task_name}」，马上开始搞！💪",
+        "content": start_msg,
         "metadata": {"agent_name": task_name, "task_id": task_id},
     })
 

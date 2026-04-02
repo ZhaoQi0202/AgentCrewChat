@@ -8,7 +8,10 @@ from typing import Any
 
 from agentloom.graph.event_bus import emit_event
 from agentloom.graph.nodes.react_agent import run_react_agent
+from agentloom.graph.nodes.reviewer_agent import review_task
 from agentloom.tools.tool_registry import create_tools_for_task
+
+MAX_AGENT_RETRY = 3
 
 
 def _ts() -> str:
@@ -129,43 +132,94 @@ def run_orchestration(
                         "metadata": {"agent_name": task_name, "task_id": task_id},
                     })
 
-            # 创建工具并执行
+            # 创建工具
             tools = create_tools_for_task(tool_ids, workspace)
-            result = run_react_agent(
-                task_id=task_id,
-                task_name=task_name,
-                task_goal=task_goal,
-                acceptance_criteria=criteria,
-                tools=tools,
-                workspace_path=str(workspace),
-                thread_id=thread_id,
-            )
 
-            completed_tasks[task_id] = result
-            all_results.append(result)
+            # 执行 + 审核 + 重试循环
+            retry_feedback = None
+            final_result = None
+            review_passed = False
+
+            for attempt in range(MAX_AGENT_RETRY + 1):
+                result = run_react_agent(
+                    task_id=task_id,
+                    task_name=task_name,
+                    task_goal=task_goal,
+                    acceptance_criteria=criteria,
+                    tools=tools,
+                    workspace_path=str(workspace),
+                    thread_id=thread_id,
+                    retry_feedback=retry_feedback,
+                )
+                final_result = result
+
+                # 如果 Agent 本身出错，不审核直接跳过
+                if result["status"] == "error":
+                    break
+
+                # 审核
+                review_passed, review_msg = review_task(
+                    task_id=task_id,
+                    task_name=task_name,
+                    task_goal=task_goal,
+                    acceptance_criteria=criteria,
+                    agent_output=result["output"],
+                    thread_id=thread_id,
+                )
+
+                if review_passed:
+                    break
+
+                # 审核不通过，检查是否还有重试次数
+                if attempt < MAX_AGENT_RETRY:
+                    retry_feedback = review_msg
+                    emit_event(thread_id, {
+                        "type": "agent_output",
+                        "timestamp": _ts(),
+                        "phase": "experts",
+                        "agent": "experts",
+                        "content": f"🔄 任务「{task_name}」审核未通过（第 {attempt + 1}/{MAX_AGENT_RETRY} 次），根据反馈重新执行...",
+                        "metadata": {"agent_name": task_name, "task_id": task_id},
+                    })
+
+            # 记录最终结果
+            final_result["review_passed"] = review_passed
+            final_result["retry_count"] = min(attempt, MAX_AGENT_RETRY) if final_result["status"] != "error" else 0
+            completed_tasks[task_id] = final_result
+            all_results.append(final_result)
 
             # 保存单个任务结果
-            _save_task_output(workspace, task_id, result)
+            _save_task_output(workspace, task_id, final_result)
 
-            # 通知下游
-            status_emoji = "✅" if result["status"] == "completed" else "⚠️"
-            emit_event(thread_id, {
-                "type": "agent_output",
-                "timestamp": _ts(),
-                "phase": "experts",
-                "agent": "experts",
-                "content": f"{status_emoji} 任务「{task_name}」执行完毕（状态: {result['status']}，工具调用: {result['tool_calls_count']}次）",
-                "metadata": {"agent_name": task_name, "task_id": task_id},
-            })
+            # 通知完成状态
+            if review_passed:
+                emit_event(thread_id, {
+                    "type": "agent_output",
+                    "timestamp": _ts(),
+                    "phase": "experts",
+                    "agent": "experts",
+                    "content": f"✅ 任务「{task_name}」执行并通过审核！（工具调用: {final_result['tool_calls_count']}次）",
+                    "metadata": {"agent_name": task_name, "task_id": task_id},
+                })
+            else:
+                emit_event(thread_id, {
+                    "type": "agent_output",
+                    "timestamp": _ts(),
+                    "phase": "experts",
+                    "agent": "experts",
+                    "content": f"⚠️ 任务「{task_name}」经过 {MAX_AGENT_RETRY} 次重试仍未通过审核，先记录结果继续推进",
+                    "metadata": {"agent_name": task_name, "task_id": task_id},
+                })
 
     # 汇总
-    completed_count = sum(1 for r in all_results if r["status"] == "completed")
+    passed_count = sum(1 for r in all_results if r.get("review_passed"))
+    total = len(all_results)
     emit_event(thread_id, {
         "type": "agent_output",
         "timestamp": _ts(),
         "phase": "experts",
         "agent": "experts",
-        "content": f"🎯 所有任务执行完毕！{completed_count}/{len(tasks)} 个任务成功完成",
+        "content": f"🎯 所有任务执行完毕！{passed_count}/{total} 个任务通过审核",
     })
 
     return all_results

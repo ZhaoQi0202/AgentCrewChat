@@ -144,35 +144,44 @@ def experts(state: AgentLoomState) -> dict[str, Any]:
 
 
 def reviewer(state: AgentLoomState) -> dict[str, Any]:
-    """质量审查员：审查执行结果。"""
-    user_request = state.get("user_request", "")
-    blueprint = state.get("blueprint", {})
-    blueprint_text = blueprint.get("raw", "") if isinstance(blueprint, dict) else str(blueprint)
+    """质量审查员：最终汇总审核，处理失败任务的降级决策。"""
     expert_runs = state.get("expert_runs", [])
-    expert_text = ""
-    for run in expert_runs:
-        if isinstance(run, dict):
-            expert_text += run.get("swarm_output", str(run)) + "\n"
-
     r = int(state.get("review_round", 0))
 
-    system = (
-        "你是质量审查员。在一个项目群聊中，你的职责是快速给出审查结论。\n"
-        "要求：\n"
-        "- 回复必须控制在100-200个字符以内\n"
-        "- 用简洁的群聊对话风格，不要使用 Markdown 标题格式\n"
-        "- 直接说：审查结论（通过/需修改）、关键问题\n"
-        "- 最后必须包含 PASS 或 NEEDS_REVISION\n"
-        "- 像在工作群里给同事发审查意见一样说话\n"
-    )
-    user = (
-        f"需求：{user_request}\n蓝图：{blueprint_text}\n"
-        f"执行结果：{expert_text}\n第{r + 1}轮审查，请给出结论。"
-    )
+    passed_tasks = []
+    failed_tasks = []
+    for run in expert_runs:
+        if isinstance(run, dict):
+            name = run.get("task_name", run.get("task_id", "?"))
+            if run.get("review_passed"):
+                passed_tasks.append(name)
+            else:
+                failed_tasks.append(name)
 
-    message = _call_llm(system, user)
+    total = len(passed_tasks) + len(failed_tasks)
 
-    verdict = "pass" if "PASS" in message.upper() and "NEEDS_REVISION" not in message.upper() else "needs_revision"
+    if not failed_tasks:
+        # 全部通过
+        message = (
+            f"🎉 全部 {total} 个任务都通过审核了！交付质量没问题，"
+            f"可以收工了~ PASS"
+        )
+        verdict = "pass"
+    else:
+        # 有失败任务
+        failed_list = "、".join(failed_tasks)
+        passed_list = "、".join(passed_tasks) if passed_tasks else "无"
+        message = (
+            f"📊 最终审核报告：\n"
+            f"  通过（{len(passed_tasks)}）: {passed_list}\n"
+            f"  未通过（{len(failed_tasks)}）: {failed_list}\n\n"
+            f"有 {len(failed_tasks)} 个任务未通过审核，"
+            f"你可以选择：\n"
+            f"  1. 回复「接受」— 接受当前结果继续\n"
+            f"  2. 回复「重做」— 让架构师重新设计失败的任务点\n"
+            f"NEEDS_REVISION"
+        )
+        verdict = "needs_revision"
 
     return {
         "phase": "review",
