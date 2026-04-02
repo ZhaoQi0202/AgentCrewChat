@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from agentloom.graph.nodes.architect_agent import generate_blueprint
 from agentloom.graph.state import AgentLoomState
 from agentloom.llm.factory import get_chat_model
+from agentloom.paths import workspaces_dir
+from agentloom.tasks.blueprint import save_blueprint
+from agentloom.tasks.requirement import load_requirement
 
 
 def _call_llm(system_prompt: str, user_prompt: str) -> str:
@@ -31,35 +37,57 @@ def consultant(state: AgentLoomState) -> dict[str, Any]:
 
 
 def architect(state: AgentLoomState) -> dict[str, Any]:
-    """架构设计师：基于需求分析设计技术方案。"""
-    user_request = state.get("user_request", "")
-    consult_summary = state.get("consult_summary", "")
+    """架构设计师：读取需求和可用工具，生成 DAG 任务规划。"""
+    task_id = state.get("task_id", "")
+    task_path = workspaces_dir() / task_id if task_id else None
 
-    system = (
-        "你是架构设计师。在一个项目群聊中，你的职责是给出简洁的技术方案。\n"
-        "要求：\n"
-        "- 回复必须控制在100-200个字符以内\n"
-        "- 用简洁的群聊对话风格，不要使用 Markdown 标题格式\n"
-        "- 直接说：技术选型 + 核心步骤（3-5步，每步一句话）\n"
-        "- 像在工作群里给同事发消息一样说话\n"
-    )
-    user = f"需求：{user_request}\n分析：{consult_summary}\n请给出技术方案。"
+    # 读取结构化需求
+    requirement = None
+    if task_path and task_path.exists():
+        requirement = load_requirement(task_path)
+    if not requirement:
+        requirement = {
+            "core_goal": state.get("user_request", ""),
+            "raw_conversation_summary": state.get("consult_summary", ""),
+        }
 
-    message = _call_llm(system, user)
+    # 生成 blueprint
+    message, blueprint = generate_blueprint(requirement, task_path)
+
+    # 保存 blueprint.json 到 workspace
+    if blueprint and task_path and task_path.exists():
+        save_blueprint(task_path, blueprint)
 
     return {
         "phase": "architect",
-        "blueprint": {"raw": message},
+        "blueprint": blueprint or {"raw": message},
         "architect_gap_notes": "",
         "message": message,
     }
 
 
 def hitl_blueprint(state: AgentLoomState) -> dict[str, Any]:
-    """方案审核员：等待人工审核蓝图。"""
+    """方案审核员：展示架构师的任务规划，等待人工审核。"""
+    blueprint = state.get("blueprint", {})
+    tasks = blueprint.get("tasks", []) if isinstance(blueprint, dict) else []
+
+    if tasks:
+        summary_lines = ["架构师的任务规划如下：\n"]
+        for t in tasks:
+            deps = ", ".join(t.get("depends_on", [])) or "无"
+            tools = ", ".join(t.get("tools", []))
+            summary_lines.append(
+                f"  [{t.get('id', '?')}] {t.get('name', '?')} — {t.get('goal', '')}\n"
+                f"    工具: {tools} | 依赖: {deps}"
+            )
+        summary_lines.append("\n确认没问题回复「继续」，需要调整请说明修改意见。")
+        msg = "\n".join(summary_lines)
+    else:
+        msg = "方案已提交，请审核上面架构设计师的方案。确认无误回复「继续」，需要调整请说明修改意见。"
+
     return {
         "phase": "hitl_blueprint",
-        "message": "方案已提交，请审核上面架构设计师的方案。确认无误回复「继续」，需要调整请说明修改意见。",
+        "message": msg,
     }
 
 

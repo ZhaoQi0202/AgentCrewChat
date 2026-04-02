@@ -52,5 +52,5 @@ def build_graph(install_root: Path | None = None) -> Any:
 
     return g.compile(
         checkpointer=checkpointer,
-        interrupt_before=["architect", "hitl_blueprint", "reviewer"],
+        interrupt_before=["hitl_blueprint", "reviewer"],
     )
