@@ -11,7 +11,13 @@ interface AgentMessageProps {
 export function AgentMessage({ event }: AgentMessageProps) {
   const agentId = (event.agent || "consultant") as AgentId;
   const meta = AGENT_META[agentId];
+  const dynamicName = event.metadata?.agent_name as string | undefined;
+  const isToolCall = event.metadata?.tool_call === true;
   const isThinking = event.type === "agent_thinking";
+
+  const displayName = dynamicName || meta?.label || agentId;
+  const displayEmoji = dynamicName ? "\u26A1" : meta?.emoji || "\u{1F916}";
+  const displayColor = meta?.nameColor || "#16a34a";
 
   const time = new Date(event.timestamp).toLocaleTimeString("zh-CN", {
     hour: "2-digit",
@@ -24,18 +30,36 @@ export function AgentMessage({ event }: AgentMessageProps) {
       animate={{ opacity: 1, y: 0 }}
       className="flex gap-3 px-4 py-2 max-w-[85%]"
     >
-      <AgentAvatar agentId={agentId} size={36} />
+      {meta ? (
+        <AgentAvatar agentId={agentId} size={36} />
+      ) : (
+        <div
+          className="rounded-full flex items-center justify-center text-white font-medium shrink-0"
+          style={{
+            width: 36,
+            height: 36,
+            background: "linear-gradient(135deg, #22c55e, #10b981)",
+            fontSize: 14,
+          }}
+        >
+          {displayEmoji}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         {/* 头部：Agent 名称 + 时间 */}
         <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-sm font-semibold" style={{ color: meta.nameColor }}>
-            {meta.emoji} {meta.label}
+          <span className="text-sm font-semibold" style={{ color: displayColor }}>
+            {displayEmoji} {displayName}
           </span>
           <span className="text-[10px] text-text-muted">{time}</span>
         </div>
 
         {/* 消息气泡 */}
-        <div className="bg-white/80 backdrop-blur-sm border border-black/5 shadow-sm rounded-tl-sm p-3 text-sm text-text-body leading-relaxed">
+        <div className={`backdrop-blur-sm border shadow-sm rounded-tl-sm p-3 text-sm leading-relaxed ${
+          isToolCall
+            ? "bg-amber-50/80 border-amber-200/50 text-amber-900 font-mono text-xs"
+            : "bg-white/80 border-black/5 text-text-body"
+        }`}>
           {isThinking ? (
             <ThinkingDots />
           ) : (

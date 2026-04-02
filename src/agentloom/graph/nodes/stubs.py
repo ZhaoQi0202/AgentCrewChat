@@ -7,10 +7,11 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agentloom.graph.nodes.architect_agent import generate_blueprint
+from agentloom.graph.orchestrator import run_orchestration
 from agentloom.graph.state import AgentLoomState
 from agentloom.llm.factory import get_chat_model
 from agentloom.paths import workspaces_dir
-from agentloom.tasks.blueprint import save_blueprint
+from agentloom.tasks.blueprint import load_blueprint, save_blueprint
 from agentloom.tasks.requirement import load_requirement
 
 
@@ -92,26 +93,52 @@ def hitl_blueprint(state: AgentLoomState) -> dict[str, Any]:
 
 
 def experts(state: AgentLoomState) -> dict[str, Any]:
-    """执行专家组：根据蓝图执行任务。"""
-    user_request = state.get("user_request", "")
+    """执行专家组：根据蓝图调度多个 ReAct Agent 执行任务。"""
+    task_id = state.get("task_id", "")
+    thread_id = state.get("_thread_id", "")
     blueprint = state.get("blueprint", {})
-    blueprint_text = blueprint.get("raw", "") if isinstance(blueprint, dict) else str(blueprint)
+    workspace = workspaces_dir() / task_id if task_id else None
 
-    system = (
-        "你是执行专家组。在一个项目群聊中，你的职责是汇报执行进展。\n"
-        "要求：\n"
-        "- 回复必须控制在100-200个字符以内\n"
-        "- 用简洁的群聊对话风格，不要使用 Markdown 标题格式\n"
-        "- 直接说：做了什么、关键结果、有无问题\n"
-        "- 像在工作群里给同事发进度汇报一样说话\n"
+    # 如果 blueprint 没有 tasks 字段，尝试从 workspace 加载
+    if not blueprint.get("tasks") and workspace and workspace.exists():
+        loaded = load_blueprint(workspace)
+        if loaded:
+            blueprint = loaded
+
+    if not blueprint.get("tasks"):
+        return {
+            "phase": "experts",
+            "expert_runs": [{"swarm_output": "蓝图中没有可执行的任务"}],
+            "message": "蓝图中没有可执行的任务",
+        }
+
+    # 运行 DAG Orchestrator
+    results = run_orchestration(
+        blueprint=blueprint,
+        workspace=workspace,
+        thread_id=thread_id,
     )
-    user = f"需求：{user_request}\n蓝图：{blueprint_text}\n请汇报执行结果。"
 
-    message = _call_llm(system, user)
+    # 汇总结果
+    expert_runs = []
+    summary_lines = []
+    for r in results:
+        expert_runs.append({
+            "task_id": r["task_id"],
+            "task_name": r["task_name"],
+            "status": r["status"],
+            "swarm_output": r["output"],
+            "tool_calls_count": r["tool_calls_count"],
+        })
+        status_emoji = "✅" if r["status"] == "completed" else "⚠️"
+        summary_lines.append(f"{status_emoji} {r['task_name']}: {r['status']}")
+
+    completed = sum(1 for r in results if r["status"] == "completed")
+    message = f"执行完毕！{completed}/{len(results)} 个任务完成\n" + "\n".join(summary_lines)
 
     return {
         "phase": "experts",
-        "expert_runs": [{"swarm_output": message}],
+        "expert_runs": expert_runs,
         "message": message,
     }
 

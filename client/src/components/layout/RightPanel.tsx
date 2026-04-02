@@ -18,6 +18,26 @@ export function RightPanel() {
     (id) => completedPhases.has(id) || id === currentPhase,
   );
 
+  // 动态执行 Agent（从 experts 阶段事件中提取）
+  const dynamicAgents: { name: string; taskId: string; status: string }[] = [];
+  const seenDynamic = new Set<string>();
+  for (const e of events) {
+    const agentName = e.metadata?.agent_name as string | undefined;
+    const taskId = e.metadata?.task_id as string | undefined;
+    if (agentName && taskId && !seenDynamic.has(taskId)) {
+      seenDynamic.add(taskId);
+      dynamicAgents.push({ name: agentName, taskId, status: "running" });
+    }
+  }
+  // 标记已完成的动态 Agent
+  for (const e of events) {
+    const taskId = e.metadata?.task_id as string | undefined;
+    if (taskId && e.content?.includes("执行完毕")) {
+      const agent = dynamicAgents.find((a) => a.taskId === taskId);
+      if (agent) agent.status = e.content.includes("✅") ? "completed" : "error";
+    }
+  }
+
   return (
     <aside className="w-[260px] shrink-0 border-l border-border-subtle bg-bg-surface/50 flex flex-col overflow-y-auto">
       {/* 工作流进度 */}
@@ -91,7 +111,7 @@ export function RightPanel() {
         <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
           活跃 Agent
         </h3>
-        {activeAgents.length === 0 ? (
+        {activeAgents.length === 0 && dynamicAgents.length === 0 ? (
           <p className="text-xs text-text-muted">暂无活跃 Agent</p>
         ) : (
           <div className="space-y-2">
@@ -120,6 +140,41 @@ export function RightPanel() {
                 </div>
               );
             })}
+            {dynamicAgents.map((agent) => (
+              <div
+                key={agent.taskId}
+                className="flex items-center gap-2.5 p-2 rounded-lg bg-bg-elevated"
+              >
+                <div
+                  className="rounded-full flex items-center justify-center text-white font-medium shrink-0"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    background: "linear-gradient(135deg, #22c55e, #10b981)",
+                    fontSize: 11,
+                  }}
+                >
+                  ⚡
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate text-emerald-600">
+                    {agent.name}
+                  </p>
+                  <p className="text-[10px] text-text-muted">
+                    {agent.status === "completed" ? "已完成" : agent.status === "error" ? "有问题" : "执行中"}
+                  </p>
+                </div>
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    agent.status === "completed"
+                      ? "bg-text-disabled"
+                      : agent.status === "error"
+                        ? "bg-status-error"
+                        : "bg-status-success animate-pulse-glow"
+                  }`}
+                />
+              </div>
+            ))}
           </div>
         )}
       </div>
