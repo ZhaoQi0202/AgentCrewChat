@@ -13,7 +13,17 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from agentloom.graph.builder import build_graph
 from agentloom.graph.stream_util import split_stream_chunk
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.types import Command
+
+from agentloom.graph.nodes.consultant_agent import (
+    CONSULTANT_SYSTEM_PROMPT,
+    build_initial_greeting,
+    consult_turn,
+    extract_requirement,
+)
+from agentloom.paths import workspaces_dir
+from agentloom.tasks.requirement import save_requirement
 
 router = APIRouter(tags=["graph"])
 
@@ -144,6 +154,127 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                 resume_input = Command(resume=feedback if feedback else {})
 
                 await _pump_graph_to_ws(websocket, graph, resume_input, cfg)
+
+            elif action == "collect":
+                task_id = msg.get("task_id", "api-task")
+                user_msg = msg.get("message", "")
+
+                if session_id not in _sessions:
+                    _sessions[session_id] = {
+                        "graph": None,
+                        "cfg": {},
+                        "consultant_history": [
+                            SystemMessage(content=CONSULTANT_SYSTEM_PROMPT)
+                        ],
+                        "consultant_ready": False,
+                        "task_id": task_id,
+                    }
+
+                session = _sessions[session_id]
+                history = session["consultant_history"]
+
+                if not user_msg:
+                    greeting = build_initial_greeting()
+                    history.append(AIMessage(content=greeting))
+                    await websocket.send_json({
+                        "type": "phase_start",
+                        "timestamp": _ts(),
+                        "phase": "consult",
+                        "agent": "consultant",
+                        "content": "需求收集阶段",
+                    })
+                    await websocket.send_json({
+                        "type": "agent_output",
+                        "timestamp": _ts(),
+                        "phase": "consult",
+                        "agent": "consultant",
+                        "content": greeting,
+                    })
+                else:
+                    history.append(HumanMessage(content=user_msg))
+
+                    await websocket.send_json({
+                        "type": "agent_thinking",
+                        "timestamp": _ts(),
+                        "phase": "consult",
+                        "agent": "consultant",
+                    })
+
+                    text, is_ready, summary = await asyncio.to_thread(
+                        consult_turn, list(history)
+                    )
+
+                    history.append(AIMessage(content=text))
+                    session["consultant_ready"] = is_ready
+
+                    metadata = {}
+                    if is_ready:
+                        metadata["consultant_ready"] = True
+                        if summary:
+                            session["consultant_summary"] = summary
+
+                    await websocket.send_json({
+                        "type": "agent_output",
+                        "timestamp": _ts(),
+                        "phase": "consult",
+                        "agent": "consultant",
+                        "content": text,
+                        "metadata": metadata,
+                    })
+
+            elif action == "confirm_start":
+                session = _sessions.get(session_id)
+                if session is None:
+                    await websocket.send_json({
+                        "type": "error",
+                        "timestamp": _ts(),
+                        "content": "会话不存在",
+                    })
+                    continue
+
+                task_id = session["task_id"]
+                history = session.get("consultant_history", [])
+
+                requirement = await asyncio.to_thread(
+                    extract_requirement, list(history)
+                )
+
+                task_path = workspaces_dir() / task_id
+                if task_path.exists():
+                    save_requirement(task_path, requirement)
+
+                await websocket.send_json({
+                    "type": "phase_complete",
+                    "timestamp": _ts(),
+                    "phase": "consult",
+                    "agent": "consultant",
+                    "content": "需求收集完成",
+                })
+
+                user_request = requirement.get(
+                    "raw_conversation_summary",
+                    requirement.get("core_goal", task_id),
+                )
+                thread_id = str(uuid.uuid4())
+                cfg = {"configurable": {"thread_id": thread_id}}
+                graph = build_graph()
+
+                session["graph"] = graph
+                session["cfg"] = cfg
+
+                await websocket.send_json({
+                    "type": "phase_start",
+                    "timestamp": _ts(),
+                    "phase": "pending",
+                    "content": "需求已确认，正在启动流水线...",
+                })
+
+                await _pump_graph_to_ws(
+                    websocket,
+                    graph,
+                    {"task_id": task_id, "user_request": user_request},
+                    cfg,
+                )
 
             else:
                 await websocket.send_json({

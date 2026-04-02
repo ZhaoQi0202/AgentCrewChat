@@ -20,26 +20,13 @@ def _call_llm(system_prompt: str, user_prompt: str) -> str:
 
 
 def consultant(state: AgentLoomState) -> dict[str, Any]:
-    """需求分析师：分析用户需求，输出简短摘要。"""
-    user_request = state.get("user_request", "未提供任务描述")
-
-    system = (
-        "你是需求分析师。在一个项目群聊中，你的职责是快速分析用户需求并给出简短总结。\n"
-        "要求：\n"
-        "- 回复必须控制在100-200个字符以内\n"
-        "- 用简洁的群聊对话风格回复，不要使用 Markdown 标题格式\n"
-        "- 直接说重点：需求概要、关键风险、明确度评估\n"
-        "- 像在工作群里给同事发消息一样说话\n"
-    )
-    user = f"请分析这个需求：{user_request}"
-
-    message = _call_llm(system, user)
-
+    """需求分析师：传递已收集的需求摘要（实际对话在 WebSocket collect 阶段完成）。"""
+    summary = state.get("user_request", "未提供任务描述")
     return {
         "phase": "consult",
-        "consult_confidence": 0.9,
-        "consult_summary": message,
-        "message": message,
+        "consult_confidence": 1.0,
+        "consult_summary": summary,
+        "message": summary,
     }
 
 

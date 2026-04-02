@@ -5,7 +5,7 @@ import { useChatStore } from "../../stores/chatStore";
 export function ChatInput() {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { isInterrupted, isRunning, isCollecting, resumeGraph, sendCollectMessage, addEvent } = useChatStore();
+  const { isInterrupted, isRunning, isCollecting, isConsultantThinking, resumeGraph, sendCollectMessage, addEvent } = useChatStore();
 
   // HITL 中断时自动聚焦输入框
   useEffect(() => {
@@ -43,7 +43,7 @@ export function ChatInput() {
     }
   };
 
-  const canSend = text.trim().length > 0 && (isCollecting || isInterrupted || !isRunning);
+  const canSend = text.trim().length > 0 && (isCollecting || isInterrupted || !isRunning) && !isConsultantThinking;
 
   return (
     <div className="p-4 border-t border-border-subtle">
@@ -53,7 +53,7 @@ export function ChatInput() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isCollecting ? "回复需求分析师..." : isInterrupted ? "回复 Agent..." : "输入消息与 Agent 对话..."}
+          placeholder={isConsultantThinking ? "需求分析师正在思考..." : isCollecting ? "回复需求分析师..." : isInterrupted ? "回复 Agent..." : "输入消息与 Agent 对话..."}
           rows={1}
           className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-disabled resize-none max-h-32 py-1.5 px-2 min-h-[28px]"
           style={{ fieldSizing: "content" } as React.CSSProperties}

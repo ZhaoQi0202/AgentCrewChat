@@ -12,7 +12,7 @@ interface TaskStore {
   setActiveTask: (id: string | null) => void;
 }
 
-export const useTaskStore = create<TaskStore>((set, get) => ({
+export const useTaskStore = create<TaskStore>((set) => ({
   tasks: [],
   activeTaskId: null,
   loading: false,

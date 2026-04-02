@@ -9,13 +9,14 @@ interface ChatStore {
   isInterrupted: boolean;
   isPaused: boolean;
   isCollecting: boolean;
-  collectBuffer: string;
+  consultantReady: boolean;
+  isConsultantThinking: boolean;
 
   addEvent: (event: ChatEvent) => void;
   clearEvents: () => void;
   startCollect: (taskId: string) => void;
   sendCollectMessage: (msg: string) => void;
-  confirmStart: (taskId: string, userRequestFallback?: string) => void;
+  confirmStart: (taskId: string) => void;
   startGraph: (taskId: string, userRequest?: string) => void;
   pauseGraph: () => void;
   resumeGraph: (feedback: string) => void;
@@ -28,21 +29,37 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isInterrupted: false,
   isPaused: false,
   isCollecting: false,
-  collectBuffer: "",
+  consultantReady: false,
+  isConsultantThinking: false,
 
   addEvent: (event) =>
-    set((s) => ({
-      events: [...s.events, event],
-      currentPhase:
-        event.type === "phase_start"
-          ? (event.phase ?? s.currentPhase)
-          : s.currentPhase,
-      isInterrupted: event.type === "hitl_interrupt",
-      isRunning:
-        event.type === "task_complete" || event.type === "error"
-          ? false
-          : s.isRunning,
-    })),
+    set((s) => {
+      const consultantReady =
+        event.metadata?.consultant_ready === true
+          ? true
+          : s.consultantReady;
+      const isConsultantThinking =
+        event.type === "agent_thinking" && s.isCollecting
+          ? true
+          : event.type === "agent_output" && s.isCollecting
+            ? false
+            : s.isConsultantThinking;
+
+      return {
+        events: [...s.events, event],
+        currentPhase:
+          event.type === "phase_start"
+            ? (event.phase ?? s.currentPhase)
+            : s.currentPhase,
+        isInterrupted: event.type === "hitl_interrupt",
+        isRunning:
+          event.type === "task_complete" || event.type === "error"
+            ? false
+            : s.isRunning,
+        consultantReady,
+        isConsultantThinking,
+      };
+    }),
 
   clearEvents: () =>
     set({
@@ -52,37 +69,45 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       isInterrupted: false,
       isPaused: false,
       isCollecting: false,
-      collectBuffer: "",
+      consultantReady: false,
+      isConsultantThinking: false,
     }),
 
-  startCollect: (_taskId: string) => {
+  startCollect: (taskId: string) => {
+    const sessionId = crypto.randomUUID();
     set({
       isCollecting: true,
-      collectBuffer: "",
+      consultantReady: false,
+      isConsultantThinking: false,
       isPaused: false,
       isRunning: false,
       isInterrupted: false,
+      events: [],
+    });
+    graphSocket.connect(sessionId, {
+      initial: { action: "collect", task_id: taskId, message: "" },
+      onEvent: (event) => get().addEvent(event),
     });
   },
 
   sendCollectMessage: (msg) => {
     const trimmed = msg.trim();
     if (!trimmed) return;
-    set((s) => ({
-      collectBuffer: s.collectBuffer ? `${s.collectBuffer}\n${trimmed}` : trimmed,
-    }));
     get().addEvent({
       type: "user_response",
       timestamp: new Date().toISOString(),
       content: trimmed,
     });
+    graphSocket.send({
+      action: "collect",
+      task_id: "",
+      message: trimmed,
+    });
   },
 
-  confirmStart: (taskId, userRequestFallback) => {
-    const buf = get().collectBuffer.trim();
-    const userRequest = buf || userRequestFallback || taskId;
-    set({ isCollecting: false, collectBuffer: "" });
-    get().startGraph(taskId, userRequest);
+  confirmStart: (taskId) => {
+    set({ isCollecting: false, isRunning: true, consultantReady: false });
+    graphSocket.send({ action: "confirm_start", task_id: taskId });
   },
 
   startGraph: (taskId, userRequest) => {

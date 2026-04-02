@@ -11,7 +11,7 @@ import { ChatInput } from "./ChatInput";
 import { AGENT_META, type AgentId, type ChatEvent } from "../../types";
 
 export function ChatArea() {
-  const { events, isRunning, isPaused, isInterrupted, isCollecting, startGraph, pauseGraph, clearEvents, startCollect, confirmStart } = useChatStore();
+  const { events, isRunning, isPaused, isInterrupted, isCollecting, consultantReady, startGraph, pauseGraph, clearEvents, startCollect, confirmStart } = useChatStore();
   const { activeTaskId, tasks } = useTaskStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -67,9 +67,9 @@ export function ChatArea() {
           <StatusBadge status={status} />
         </div>
         <div className="flex items-center gap-2">
-          {isCollecting && (
+          {isCollecting && consultantReady && (
             <button
-              onClick={() => confirmStart(activeTask.id, activeTask.name)}
+              onClick={() => confirmStart(activeTask.id)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover text-status-success"
             >
               <Play size={12} />
@@ -125,9 +125,11 @@ export function ChatArea() {
 
       {/* 对话区滚动容器 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
-        {events.length === 0 && !isCollecting ? (
+        {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
-            <p className="text-text-muted text-sm">新项目组已创建，等待启动...</p>
+            <p className="text-text-muted text-sm">
+              {isCollecting ? "正在连接需求分析师..." : "新项目组已创建，等待启动..."}
+            </p>
           </div>
         ) : (
           events.map((event, i) => {

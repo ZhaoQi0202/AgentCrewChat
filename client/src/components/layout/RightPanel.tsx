@@ -3,7 +3,7 @@ import { AGENT_META, WORKFLOW_PHASES, type AgentId } from "../../types";
 import { AgentAvatar } from "../shared/AgentAvatar";
 
 export function RightPanel() {
-  const { currentPhase, events, isRunning } = useChatStore();
+  const { currentPhase, events, isRunning, isCollecting } = useChatStore();
 
   // 从事件流推断每个阶段的完成状态
   const completedPhases = new Set<string>();
@@ -72,9 +72,11 @@ export function RightPanel() {
                     {isCompleted
                       ? "已完成"
                       : isCurrent
-                        ? isRunning
-                          ? "运行中..."
-                          : "等待审核"
+                        ? isCollecting
+                          ? "需求收集中..."
+                          : isRunning
+                            ? "运行中..."
+                            : "等待审核"
                         : "未开始"}
                   </p>
                 </div>
