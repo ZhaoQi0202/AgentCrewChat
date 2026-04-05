@@ -219,8 +219,8 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                         if summary:
                             session["consultant_summary"] = summary
 
-                    # 剥离 JSON 块，展示友好格式
-                    display_text = strip_summary_block(text, summary) if is_ready else text
+                    # 始终尝试剥离 JSON，展示友好格式
+                    display_text = strip_summary_block(text, summary)
 
                     await websocket.send_json({
                         "type": "agent_output",

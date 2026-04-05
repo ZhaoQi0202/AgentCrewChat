@@ -63,7 +63,7 @@ export function AgentMessage({ event }: AgentMessageProps) {
           {isThinking ? (
             <ThinkingDots />
           ) : (
-            <div className="prose prose-sm max-w-none [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1">
+            <div className="prose prose-sm max-w-none [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1 overflow-x-auto break-words [&>pre]:max-w-full [&>pre]:overflow-x-auto">
               <ReactMarkdown>{event.content || ""}</ReactMarkdown>
             </div>
           )}

@@ -54,26 +54,84 @@ _SUMMARY_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# 兼容 LLM 用 ```json 或其他标记输出 JSON
+_JSON_BLOCK_PATTERN = re.compile(
+    r"```(?:json|requirement_summary)?\s*\n(\{.*?\})\s*\n```",
+    re.DOTALL,
+)
+
+# 兜底：检测裸 JSON（以 { 开头，包含 project_name 或 core_goal）
+_RAW_JSON_PATTERN = re.compile(
+    r'(\{\s*"(?:project_name|core_goal)".*\})',
+    re.DOTALL,
+)
+
+
+def _try_parse_json(text: str) -> dict | None:
+    """尝试从文本中提取并解析 JSON 需求摘要，兼容多种格式。"""
+    # 1. 尝试 ```requirement_summary 格式
+    m = _SUMMARY_PATTERN.search(text)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 2. 尝试 ```json 或其他代码块格式
+    m = _JSON_BLOCK_PATTERN.search(text)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 3. 尝试裸 JSON
+    m = _RAW_JSON_PATTERN.search(text)
+    if m:
+        try:
+            parsed = json.loads(m.group(1))
+            if isinstance(parsed, dict) and ("core_goal" in parsed or "project_name" in parsed):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None
+
+
+def _strip_all_json(text: str) -> str:
+    """从文本中移除所有 JSON 代码块和裸 JSON。"""
+    # 移除 ``` 包裹的代码块
+    clean = re.sub(r"```(?:json|requirement_summary)?\s*\n\{.*?\}\s*\n```", "", text, flags=re.DOTALL)
+    # 移除裸 JSON
+    clean = _RAW_JSON_PATTERN.sub("", clean)
+    # 清理多余空行
+    clean = re.sub(r"\n{3,}", "\n\n", clean)
+    return clean.strip()
+
 
 def strip_summary_block(text: str, summary: dict | None = None) -> str:
-    """从 LLM 回复中剥离 requirement_summary JSON 块，替换为友好的格式化摘要。"""
-    # 去掉 JSON 代码块
-    clean = _SUMMARY_PATTERN.sub("", text).strip()
+    """从 LLM 回复中剥离所有 JSON 数据，替换为友好的格式化摘要。"""
+    # 如果没传 summary，尝试从文本中提取
+    if summary is None:
+        summary = _try_parse_json(text)
+
+    # 移除所有 JSON
+    clean = _strip_all_json(text)
 
     if summary:
-        # 用友好格式展示摘要
-        lines = ["\n📋 **需求摘要**\n"]
+        lines = ["\n\U0001F4CB **需求摘要**\n"]
         if summary.get("project_name"):
             lines.append(f"**项目名称：** {summary['project_name']}")
         if summary.get("core_goal"):
             lines.append(f"**核心目标：** {summary['core_goal']}")
         constraints = summary.get("constraints", {})
-        if constraints.get("tech_stack"):
-            lines.append(f"**技术栈：** {', '.join(constraints['tech_stack'])}")
-        if constraints.get("platform"):
-            lines.append(f"**平台：** {constraints['platform']}")
-        if constraints.get("timeline"):
-            lines.append(f"**时间要求：** {constraints['timeline']}")
+        if isinstance(constraints, dict):
+            if constraints.get("tech_stack"):
+                lines.append(f"**技术栈：** {', '.join(constraints['tech_stack'])}")
+            if constraints.get("platform"):
+                lines.append(f"**平台：** {constraints['platform']}")
+            if constraints.get("timeline"):
+                lines.append(f"**时间要求：** {constraints['timeline']}")
         criteria = summary.get("success_criteria", [])
         if criteria:
             lines.append("**成功标准：**")
@@ -83,15 +141,16 @@ def strip_summary_block(text: str, summary: dict | None = None) -> str:
         if features:
             lines.append("**功能点：**")
             for f in features:
-                priority_map = {"must": "必须", "should": "应该", "nice_to_have": "可选"}
-                p = priority_map.get(f.get("priority", ""), f.get("priority", ""))
-                lines.append(f"  - {f.get('name', '?')}（{p}）: {f.get('description', '')}")
+                if isinstance(f, dict):
+                    priority_map = {"must": "必须", "should": "应该", "nice_to_have": "可选"}
+                    p = priority_map.get(f.get("priority", ""), f.get("priority", ""))
+                    lines.append(f"  - {f.get('name', '?')}（{p}）: {f.get('description', '')}")
         if summary.get("additional_notes"):
             lines.append(f"**备注：** {summary['additional_notes']}")
 
         clean = clean + "\n" + "\n".join(lines) if clean else "\n".join(lines)
 
-    return clean
+    return clean or text
 
 
 def build_initial_greeting() -> str:
@@ -104,14 +163,8 @@ def build_initial_greeting() -> str:
 
 
 def _parse_summary(text: str) -> dict | None:
-    """从 LLM 回复中解析 requirement_summary JSON 块。"""
-    m = _SUMMARY_PATTERN.search(text)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(1))
-    except (json.JSONDecodeError, ValueError):
-        return None
+    """从 LLM 回复中解析需求摘要 JSON（兼容多种格式）。"""
+    return _try_parse_json(text)
 
 
 def consult_turn(history: list[BaseMessage]) -> tuple[str, bool, dict | None]:
