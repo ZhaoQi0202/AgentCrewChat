@@ -6,7 +6,7 @@ export function BrowserBlocked() {
       </div>
       <h1 className="text-lg font-semibold text-text-primary">请使用桌面客户端</h1>
       <p className="text-sm text-text-secondary max-w-md">
-        AgentLoom 界面仅随 Electron 应用提供，请勿在浏览器中直接打开开发地址。
+        AgentCrewChat 界面仅随 Electron 应用提供，请勿在浏览器中直接打开开发地址。
       </p>
     </div>
   );

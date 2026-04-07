@@ -1,6 +1,6 @@
-appId: com.agentloom.desktop
-productName: AgentLoom
-copyright: Copyright © 2026 AgentLoom
+appId: com.agentcrewchat.desktop
+productName: AgentCrewChat
+copyright: Copyright © 2026 AgentCrewChat
 
 directories:
   output: release
@@ -11,7 +11,7 @@ files:
   - package.json
 
 extraResources:
-  - from: resources/backend/agentloom-api
+  - from: resources/backend/agentcrewchat-api
     to: backend
     filter:
       - "**/*"

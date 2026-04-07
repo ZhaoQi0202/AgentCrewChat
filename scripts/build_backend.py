@@ -1,13 +1,13 @@
 """
-PyInstaller 打包脚本 — 将 AgentLoom API 后端打包为单目录可执行程序。
+PyInstaller 打包脚本 — 将 AgentCrewChat API 后端打包为单目录可执行程序。
 
 用法:
   cd <project_root>
   python scripts/build_backend.py
 
 输出:
-  client/resources/backend/agentloom-api.exe  (Windows)
-  client/resources/backend/agentloom-api      (macOS/Linux)
+  client/resources/backend/agentcrewchat-api.exe  (Windows)
+  client/resources/backend/agentcrewchat-api      (macOS/Linux)
 """
 
 import subprocess
@@ -27,16 +27,16 @@ def main():
         "--clean",
         # 单目录模式（比单文件启动更快）
         "--onedir",
-        "--name", "agentloom-api",
+        "--name", "agentcrewchat-api",
         "--distpath", str(DIST_DIR),
         # 隐藏导入
-        "--hidden-import", "agentloom.api",
-        "--hidden-import", "agentloom.api.app",
-        "--hidden-import", "agentloom.api.routes",
-        "--hidden-import", "agentloom.api.routes.config",
-        "--hidden-import", "agentloom.api.routes.tasks",
-        "--hidden-import", "agentloom.api.routes.graph",
-        "--hidden-import", "agentloom.graph.nodes.stubs",
+        "--hidden-import", "agentcrewchat.api",
+        "--hidden-import", "agentcrewchat.api.app",
+        "--hidden-import", "agentcrewchat.api.routes",
+        "--hidden-import", "agentcrewchat.api.routes.config",
+        "--hidden-import", "agentcrewchat.api.routes.tasks",
+        "--hidden-import", "agentcrewchat.api.routes.graph",
+        "--hidden-import", "agentcrewchat.graph.nodes.stubs",
         "--hidden-import", "uvicorn.logging",
         "--hidden-import", "uvicorn.protocols.http.auto",
         "--hidden-import", "uvicorn.protocols.websockets.auto",
@@ -47,7 +47,7 @@ def main():
         "--collect-all", "langchain_openai",
         "--collect-all", "langchain_anthropic",
         # 入口
-        str(ROOT / "src" / "agentloom" / "api" / "server.py"),
+        str(ROOT / "src" / "agentcrewchat" / "api" / "server.py"),
     ]
 
     print(f"[build_backend] Running: {' '.join(cmd[:6])}...")
@@ -56,7 +56,7 @@ def main():
         print("[build_backend] PyInstaller failed!")
         sys.exit(1)
 
-    print(f"[build_backend] Output: {DIST_DIR / 'agentloom-api'}")
+    print(f"[build_backend] Output: {DIST_DIR / 'agentcrewchat-api'}")
     print("[build_backend] Done.")
 
 

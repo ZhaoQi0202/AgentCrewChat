@@ -22,7 +22,7 @@ export function TitleBar() {
       {/* 标题 */}
       <div className="flex-1 text-center">
         <span className="text-xs text-text-muted font-medium tracking-wide">
-          AgentLoom
+          AgentCrewChat
         </span>
       </div>
 

@@ -26,15 +26,15 @@ function startPythonBackend() {
           : path.join(cwd, ".venv", "bin", "python");
       if (fs.existsSync(venvPy)) {
         cmd = venvPy;
-        args = ["-m", "agentloom.api.server"];
+        args = ["-m", "agentcrewchat.api.server"];
       } else {
         cmd = "uv";
-        args = ["run", "python", "-m", "agentloom.api.server"];
+        args = ["run", "python", "-m", "agentcrewchat.api.server"];
         shell = process.platform === "win32";
       }
     } else {
       const exeName =
-        process.platform === "win32" ? "agentloom-api.exe" : "agentloom-api";
+        process.platform === "win32" ? "agentcrewchat-api.exe" : "agentcrewchat-api";
       cmd = path.join(process.resourcesPath, "backend", exeName);
       args = [];
       cwd = path.dirname(cmd);
@@ -46,7 +46,7 @@ function startPythonBackend() {
       cwd,
       shell,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, AGENTLOOM_ROOT: cwd },
+      env: { ...process.env, AGENTCREWCHAT_ROOT: cwd },
     });
 
     let resolved = false;

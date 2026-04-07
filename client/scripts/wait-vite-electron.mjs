@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const clientRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const AGENTLOOM_VITE_PORT = 25527;
+const AGENTCREWCHAT_VITE_PORT = 25527;
 
 function checkPort(port) {
   return new Promise((resolve) => {
@@ -26,7 +26,7 @@ function checkPort(port) {
 async function main() {
   let ok = false;
   for (let i = 0; i < 200; i++) {
-    if (await checkPort(AGENTLOOM_VITE_PORT)) {
+    if (await checkPort(AGENTCREWCHAT_VITE_PORT)) {
       ok = true;
       break;
     }
@@ -34,13 +34,13 @@ async function main() {
   }
   if (!ok) {
     console.error(
-      `[wait-vite] 未在 ${AGENTLOOM_VITE_PORT} 检测到本项目的 Vite（请确认未改 vite 端口，且未被占用）`,
+      `[wait-vite] 未在 ${AGENTCREWCHAT_VITE_PORT} 检测到本项目的 Vite（请确认未改 vite 端口，且未被占用）`,
     );
     process.exit(1);
   }
   const env = {
     ...process.env,
-    VITE_DEV_SERVER_URL: `http://localhost:${AGENTLOOM_VITE_PORT}`,
+    VITE_DEV_SERVER_URL: `http://localhost:${AGENTCREWCHAT_VITE_PORT}`,
   };
   const electronBin = require("electron");
   spawn(electronBin, ["."], {

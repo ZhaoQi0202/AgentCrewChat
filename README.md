@@ -1,8 +1,8 @@
-# AgentLoom
+# AgentCrewChat
 
 多智能体协作平台 — 通过**四阶段流水线**将用户需求转化为实际执行：需求收集 → 架构设计 → 多 Agent 执行 → 审核反馈。所有交互在**群聊界面**中以拟真项目组对话形式展现。
 
-**仓库：** [github.com/ZhaoQi0202/AgentLoom](https://github.com/ZhaoQi0202/AgentLoom)
+**仓库：** [github.com/ZhaoQi0202/AgentCrewChat](https://github.com/ZhaoQi0202/AgentCrewChat)
 
 ## 核心流程
 
@@ -32,7 +32,7 @@ Agent 执行 → Reviewer 审核
 
 | 部分 | 说明 |
 |------|------|
-| **Python 后端** | FastAPI（`src/agentloom/`），监听 `127.0.0.1:9800`；REST 配置与任务管理；WebSocket `ws://127.0.0.1:9800/api/ws/graph/{session_id}` 实时推送事件 |
+| **Python 后端** | FastAPI（`src/agentcrewchat/`），监听 `127.0.0.1:9800`；REST 配置与任务管理；WebSocket `ws://127.0.0.1:9800/api/ws/graph/{session_id}` 实时推送事件 |
 | **桌面客户端** | `client/`：Electron + React 19 + Vite + Tailwind；开发端口 `25527` |
 | **图引擎** | LangGraph 多阶段流水线 + SQLite checkpoint；支持 HITL（人在回路）中断 |
 | **事件总线** | Event Bus 允许 Agent 内部实时推送事件到 WebSocket，实现流式群聊输出 |
@@ -48,7 +48,7 @@ Agent 执行 → Reviewer 审核
 ## 项目结构
 
 ```
-src/agentloom/
+src/agentcrewchat/
 ├── api/                    # FastAPI 路由（REST + WebSocket）
 │   └── routes/
 │       ├── graph.py        # WebSocket：collect/confirm_start/start/resume
@@ -56,7 +56,7 @@ src/agentloom/
 │       └── config.py       # 模型/MCP/Skills 配置
 ├── graph/                  # LangGraph 图引擎
 │   ├── builder.py          # 图构建与编译
-│   ├── state.py            # AgentLoomState 类型定义
+│   ├── state.py            # AgentCrewChatState 类型定义
 │   ├── event_bus.py        # 事件总线（实时流式推送）
 │   ├── orchestrator.py     # DAG 调度器（拓扑排序 + 分层执行）
 │   └── nodes/
@@ -103,8 +103,8 @@ client/src/
 **1. 克隆与安装依赖**
 
 ```powershell
-git clone https://github.com/ZhaoQi0202/AgentLoom.git
-cd AgentLoom
+git clone https://github.com/ZhaoQi0202/AgentCrewChat.git
+cd AgentCrewChat
 uv sync
 ```
 
@@ -123,7 +123,7 @@ uv sync
 - **仅后端 API：**
 
   ```powershell
-  uv run python -m agentloom
+  uv run python -m agentcrewchat
   ```
 
 **3. 使用流程**
@@ -143,7 +143,7 @@ uv sync
 | 项目组工作区 | `workspaces/task_<时间戳>_<名称>/`，含独立 venv、`requirement.json`、`blueprint.json`、`task_outputs/` |
 | 模型连接 | 客户端「模型」页配置，或手写 `config/model_connections/`（勿提交） |
 | MCP 服务 | `config/mcp/<id>.json` |
-| Skills | 应用级 `data/skills_install/`；项目级 `<workspace>/.agentloom/skills/`（同名以项目级优先） |
+| Skills | 应用级 `data/skills_install/`；项目级 `<workspace>/.agentcrewchat/skills/`（同名以项目级优先） |
 | 阈值参数 | `max_agent_retry = 3`（Agent 重试次数）、`max_iterations = 15`（ReAct 循环上限） |
 
 ## 测试
