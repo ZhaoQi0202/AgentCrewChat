@@ -7,35 +7,58 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from agentloom.llm.factory import get_chat_model
 
 
-def test_openai_no_key_returns_fake(monkeypatch):
+def _isolated_install_root(tmp_path: Path, **settings_fields: object) -> Path:
+    cfg = tmp_path / "config"
+    cfg.mkdir(parents=True)
+    data = {
+        "default_model_connection_id": None,
+        "default_provider": "openai",
+        "openai_api_key": "",
+        "anthropic_api_key": "",
+        "openai_model": "gpt-4o-mini",
+        "anthropic_model": "claude-3-5-sonnet-20241022",
+    }
+    data.update(settings_fields)
+    (cfg / "settings.json").write_text(
+        json.dumps(data, ensure_ascii=False), encoding="utf-8"
+    )
+    return tmp_path
+
+
+def test_openai_no_key_returns_fake(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    m = get_chat_model("openai")
+    root = _isolated_install_root(tmp_path)
+    m = get_chat_model("openai", install_root=root)
     assert m._llm_type == "agentloom-fake-chat"
     assert m.invoke("hi").content == "fake"
 
 
-def test_anthropic_no_key_returns_fake(monkeypatch):
+def test_anthropic_no_key_returns_fake(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    m = get_chat_model("anthropic")
+    root = _isolated_install_root(tmp_path)
+    m = get_chat_model("anthropic", install_root=root)
     assert m._llm_type == "agentloom-fake-chat"
     assert m.invoke("hi").content == "fake"
 
 
-def test_unknown_provider_returns_fake(monkeypatch):
+def test_unknown_provider_returns_fake(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    m = get_chat_model("other")
+    root = _isolated_install_root(tmp_path)
+    m = get_chat_model("other", install_root=root)
     assert m._llm_type == "agentloom-fake-chat"
     assert m.invoke("x").content == "fake"
 
 
-def test_openai_with_key_uses_chat_openai(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+def test_openai_with_key_uses_chat_openai(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    root = _isolated_install_root(tmp_path, openai_api_key="sk-test")
     fake_real = MagicMock(spec=BaseChatModel)
     with patch("agentloom.llm.factory.ChatOpenAI", return_value=fake_real) as mock_cls:
-        out = get_chat_model("openai", model="gpt-4o-mini")
+        out = get_chat_model("openai", install_root=root, model="gpt-4o-mini")
     mock_cls.assert_called_once_with(api_key="sk-test", model="gpt-4o-mini")
     assert out is fake_real
 
@@ -90,11 +113,15 @@ def test_default_model_connection_overrides_legacy(monkeypatch, tmp_path: Path):
     assert out is fake_real
 
 
-def test_anthropic_with_key_uses_chat_anthropic(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+def test_anthropic_with_key_uses_chat_anthropic(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    root = _isolated_install_root(tmp_path, anthropic_api_key="sk-ant-test")
     fake_real = MagicMock(spec=BaseChatModel)
     with patch("agentloom.llm.factory.ChatAnthropic", return_value=fake_real) as mock_cls:
-        out = get_chat_model("anthropic", model="claude-3-5-sonnet-20241022")
+        out = get_chat_model(
+            "anthropic", install_root=root, model="claude-3-5-sonnet-20241022"
+        )
     mock_cls.assert_called_once_with(
         api_key="sk-ant-test", model="claude-3-5-sonnet-20241022"
     )
