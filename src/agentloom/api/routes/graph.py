@@ -131,8 +131,34 @@ async def _run_pipeline_after_confirm(
     session["cfg"] = cfg_new
     session["consultant_ready"] = False
 
-    summary = session.get("consultant_summary") or user_request
-    handoff = f"@架构设计师 需求已确认，转交给你推进设计。\n\n{summary}"
+    summary_dict = session.get("consultant_summary")
+
+    if summary_dict and isinstance(summary_dict, dict):
+        project_name = summary_dict.get("project_name") or "本项目"
+        core_goal = summary_dict.get("core_goal", "")
+        features = summary_dict.get("features", [])
+        constraints = summary_dict.get("constraints", {}) or {}
+        tech_stack = constraints.get("tech_stack", []) if isinstance(constraints, dict) else []
+
+        lines = [f"@架构设计师 需求分析完成，把「{project_name}」的设计工作交给你了！"]
+        if core_goal:
+            lines.append(f"核心目标：{core_goal}")
+        if features:
+            priority_map = {"must": "必须", "should": "应该", "nice_to_have": "可选"}
+            feature_parts = []
+            for f in features:
+                if isinstance(f, dict):
+                    name = f.get("name", "")
+                    p = priority_map.get(f.get("priority", ""), "")
+                    feature_parts.append(f"{name}（{p}）" if p else name)
+            if feature_parts:
+                lines.append(f"功能点：{'、'.join(feature_parts)}")
+        if tech_stack:
+            lines.append(f"技术栈：{'、'.join(tech_stack)}")
+        lines.append("辛苦了～有啥问题随时说 🎯")
+        handoff = "\n".join(lines)
+    else:
+        handoff = "@架构设计师 需求确认完成，转交给你推进设计了！辛苦～ 🎯"
 
     await websocket.send_json({
         "type": "agent_join",
