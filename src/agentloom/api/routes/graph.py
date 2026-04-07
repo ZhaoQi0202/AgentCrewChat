@@ -23,6 +23,7 @@ from agentloom.graph.nodes.consultant_agent import (
     extract_requirement,
     strip_summary_block,
 )
+from agentloom.graph.nodes.user_confirmation import is_user_confirmation
 from agentloom.paths import workspaces_dir
 from agentloom.tasks.requirement import save_requirement
 
@@ -43,11 +44,10 @@ def _iter_graph_events(graph: Any, input_obj: Any, cfg: dict) -> Iterator[dict[s
         for node, upd in parts:
             phase = upd.get("phase", node)
             yield {
-                "type": "phase_start",
+                "type": "agent_join",
                 "timestamp": _ts(),
                 "phase": phase,
                 "agent": node,
-                "content": f"阶段: {node}",
             }
             content = upd.get("message") or json.dumps(upd, ensure_ascii=False, default=str)
             yield {
@@ -105,6 +105,55 @@ async def _pump_graph_to_ws(
         if item is _SENTINEL:
             break
         await websocket.send_json(item)
+
+
+async def _run_pipeline_after_confirm(
+    websocket: WebSocket, session: dict[str, Any]
+) -> None:
+    task_id = session["task_id"]
+    history = session.get("consultant_history", [])
+
+    requirement = await asyncio.to_thread(extract_requirement, list(history))
+
+    task_path = workspaces_dir() / task_id
+    if task_path.exists():
+        save_requirement(task_path, requirement)
+
+    user_request = requirement.get(
+        "raw_conversation_summary",
+        requirement.get("core_goal", task_id),
+    )
+    thread_id_new = str(uuid.uuid4())
+    cfg_new = {"configurable": {"thread_id": thread_id_new}}
+    graph_new = build_graph()
+
+    session["graph"] = graph_new
+    session["cfg"] = cfg_new
+    session["consultant_ready"] = False
+
+    summary = session.get("consultant_summary") or user_request
+    handoff = f"@架构设计师 需求已确认，转交给你推进设计。\n\n{summary}"
+
+    await websocket.send_json({
+        "type": "agent_join",
+        "timestamp": _ts(),
+        "phase": "architect",
+        "agent": "architect",
+    })
+    await websocket.send_json({
+        "type": "agent_output",
+        "timestamp": _ts(),
+        "phase": "consult",
+        "agent": "consultant",
+        "content": handoff,
+    })
+
+    await _pump_graph_to_ws(
+        websocket,
+        graph_new,
+        {"task_id": task_id, "user_request": user_request, "_thread_id": thread_id_new},
+        cfg_new,
+    )
 
 
 @router.websocket("/ws/graph/{session_id}")
@@ -183,11 +232,10 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                     greeting = build_initial_greeting()
                     history.append(AIMessage(content=greeting))
                     await websocket.send_json({
-                        "type": "phase_start",
+                        "type": "agent_join",
                         "timestamp": _ts(),
                         "phase": "consult",
                         "agent": "consultant",
-                        "content": "需求收集阶段",
                     })
                     await websocket.send_json({
                         "type": "agent_output",
@@ -198,6 +246,10 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                     })
                 else:
                     history.append(HumanMessage(content=user_msg))
+
+                    if session.get("consultant_ready") and is_user_confirmation(user_msg):
+                        await _run_pipeline_after_confirm(websocket, session)
+                        continue
 
                     await websocket.send_json({
                         "type": "agent_thinking",
@@ -213,13 +265,9 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                     history.append(AIMessage(content=text))
                     session["consultant_ready"] = is_ready
 
-                    metadata = {}
-                    if is_ready:
-                        metadata["consultant_ready"] = True
-                        if summary:
-                            session["consultant_summary"] = summary
+                    if is_ready and summary:
+                        session["consultant_summary"] = summary
 
-                    # 始终尝试剥离 JSON，展示友好格式
                     display_text = strip_summary_block(text, summary)
 
                     await websocket.send_json({
@@ -228,7 +276,6 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                         "phase": "consult",
                         "agent": "consultant",
                         "content": display_text,
-                        "metadata": metadata,
                     })
 
             elif action == "confirm_start":
@@ -241,49 +288,7 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                     })
                     continue
 
-                task_id = session["task_id"]
-                history = session.get("consultant_history", [])
-
-                requirement = await asyncio.to_thread(
-                    extract_requirement, list(history)
-                )
-
-                task_path = workspaces_dir() / task_id
-                if task_path.exists():
-                    save_requirement(task_path, requirement)
-
-                await websocket.send_json({
-                    "type": "phase_complete",
-                    "timestamp": _ts(),
-                    "phase": "consult",
-                    "agent": "consultant",
-                    "content": "需求收集完成",
-                })
-
-                user_request = requirement.get(
-                    "raw_conversation_summary",
-                    requirement.get("core_goal", task_id),
-                )
-                thread_id = str(uuid.uuid4())
-                cfg = {"configurable": {"thread_id": thread_id}}
-                graph = build_graph()
-
-                session["graph"] = graph
-                session["cfg"] = cfg
-
-                await websocket.send_json({
-                    "type": "phase_start",
-                    "timestamp": _ts(),
-                    "phase": "pending",
-                    "content": "需求已确认，正在启动流水线...",
-                })
-
-                await _pump_graph_to_ws(
-                    websocket,
-                    graph,
-                    {"task_id": task_id, "user_request": user_request, "_thread_id": thread_id},
-                    cfg,
-                )
+                await _run_pipeline_after_confirm(websocket, session)
 
             else:
                 await websocket.send_json({

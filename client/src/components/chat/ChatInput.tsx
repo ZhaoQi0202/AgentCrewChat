@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
+import { ActionBar } from "./ActionBar";
 
 export function ChatInput() {
   const [text, setText] = useState("");
@@ -47,6 +48,7 @@ export function ChatInput() {
 
   return (
     <div className="p-4 border-t border-border-subtle">
+      <ActionBar />
       <div className="glass flex items-end gap-2 p-2">
         <textarea
           ref={textareaRef}

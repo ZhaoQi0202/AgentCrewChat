@@ -9,17 +9,16 @@ interface ChatStore {
   isInterrupted: boolean;
   isPaused: boolean;
   isCollecting: boolean;
-  consultantReady: boolean;
   isConsultantThinking: boolean;
 
   addEvent: (event: ChatEvent) => void;
   clearEvents: () => void;
   startCollect: (taskId: string) => void;
   sendCollectMessage: (msg: string) => void;
-  confirmStart: (taskId: string) => void;
   startGraph: (taskId: string, userRequest?: string) => void;
   pauseGraph: () => void;
   resumeGraph: (feedback: string) => void;
+  restartProject: (taskId: string) => void;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -29,15 +28,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isInterrupted: false,
   isPaused: false,
   isCollecting: false,
-  consultantReady: false,
   isConsultantThinking: false,
 
   addEvent: (event) =>
     set((s) => {
-      const consultantReady =
-        event.metadata?.consultant_ready === true
-          ? true
-          : s.consultantReady;
       const isConsultantThinking =
         event.type === "agent_thinking" && s.isCollecting
           ? true
@@ -45,18 +39,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             ? false
             : s.isConsultantThinking;
 
+      const architectJoin =
+        event.type === "agent_join" && event.agent === "architect";
+
       return {
         events: [...s.events, event],
         currentPhase:
-          event.type === "phase_start"
+          event.type === "phase_start" || event.type === "agent_join"
             ? (event.phase ?? s.currentPhase)
             : s.currentPhase,
         isInterrupted: event.type === "hitl_interrupt",
-        isRunning:
-          event.type === "task_complete" || event.type === "error"
+        isRunning: architectJoin
+          ? true
+          : event.type === "task_complete" || event.type === "error"
             ? false
             : s.isRunning,
-        consultantReady,
+        isCollecting: architectJoin ? false : s.isCollecting,
         isConsultantThinking,
       };
     }),
@@ -69,7 +67,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       isInterrupted: false,
       isPaused: false,
       isCollecting: false,
-      consultantReady: false,
       isConsultantThinking: false,
     }),
 
@@ -77,7 +74,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const sessionId = crypto.randomUUID();
     set({
       isCollecting: true,
-      consultantReady: false,
       isConsultantThinking: false,
       isPaused: false,
       isRunning: false,
@@ -103,11 +99,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       task_id: "",
       message: trimmed,
     });
-  },
-
-  confirmStart: (taskId) => {
-    set({ isCollecting: false, isRunning: true, consultantReady: false });
-    graphSocket.send({ action: "confirm_start", task_id: taskId });
   },
 
   startGraph: (taskId, userRequest) => {
@@ -136,5 +127,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   resumeGraph: (feedback) => {
     graphSocket.send({ action: "resume", feedback });
     set({ isInterrupted: false, isPaused: false });
+  },
+
+  restartProject: (taskId: string) => {
+    graphSocket.disconnect();
+    get().clearEvents();
+    get().startCollect(taskId);
   },
 }));

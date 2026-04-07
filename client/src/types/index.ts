@@ -50,6 +50,7 @@ export interface Task {
 
 export type ChatEventType =
   | "phase_start"
+  | "agent_join"
   | "agent_thinking"
   | "agent_output"
   | "hitl_interrupt"

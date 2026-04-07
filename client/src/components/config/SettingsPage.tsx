@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Save, Loader2 } from "lucide-react";
 import { useConfigStore } from "../../stores/configStore";
 import { GlassCard } from "../shared/GlassCard";
-import type { LlmSettings, ModelConnection } from "../../types";
+import type { LlmSettings } from "../../types";
 
 export function SettingsPage() {
   const {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Zap, Pencil, X, Check, Loader2 } from "lucide-react";
+import { Plus, Trash2, Zap, X, Check, Loader2 } from "lucide-react";
 import { useConfigStore } from "../../stores/configStore";
 import { GlassCard } from "../shared/GlassCard";
 import type { ModelConnection } from "../../types";

@@ -3,8 +3,19 @@ import { AGENT_META } from "../../types";
 import type { AgentId } from "../../types";
 
 export function SystemMessage({ event }: { event: ChatEvent }) {
-  const isJoin = event.type === "phase_start" && event.agent;
   const meta = event.agent ? AGENT_META[event.agent as AgentId] : null;
+
+  if (event.type === "agent_join" && meta) {
+    return (
+      <div className="flex justify-center my-3">
+        <span className="text-xs text-text-secondary">
+          — {meta.label} 加入了群聊 —
+        </span>
+      </div>
+    );
+  }
+
+  const isJoin = event.type === "phase_start" && event.agent;
 
   if (isJoin && meta) {
     return (

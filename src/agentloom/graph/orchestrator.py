@@ -92,7 +92,13 @@ def run_orchestration(
     completed_tasks: dict[str, dict] = {}
 
     emit_event(thread_id, {
-        "type": "phase_start",
+        "type": "agent_join",
+        "timestamp": _ts(),
+        "phase": "experts",
+        "agent": "experts",
+    })
+    emit_event(thread_id, {
+        "type": "agent_output",
         "timestamp": _ts(),
         "phase": "experts",
         "agent": "experts",

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { Play, Pause, RotateCcw } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
 import { useTaskStore } from "../../stores/taskStore";
 import { StatusBadge } from "../shared/StatusBadge";
@@ -11,7 +10,7 @@ import { ChatInput } from "./ChatInput";
 import { AGENT_META, type AgentId, type ChatEvent } from "../../types";
 
 export function ChatArea() {
-  const { events, isRunning, isPaused, isInterrupted, isCollecting, consultantReady, startGraph, pauseGraph, clearEvents, startCollect, confirmStart } = useChatStore();
+  const { events, isRunning, isPaused, isInterrupted, isCollecting, startCollect } = useChatStore();
   const { activeTaskId, tasks } = useTaskStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -66,61 +65,6 @@ export function ChatArea() {
           </h2>
           <StatusBadge status={status} />
         </div>
-        <div className="flex items-center gap-2">
-          {isCollecting && consultantReady && (
-            <button
-              onClick={() => confirmStart(activeTask.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover text-status-success"
-            >
-              <Play size={12} />
-              启动项目
-            </button>
-          )}
-          {isRunning && !isPaused && (
-            <button
-              onClick={pauseGraph}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover text-status-warning"
-            >
-              <Pause size={12} />
-              暂停项目
-            </button>
-          )}
-          {isPaused && (
-            <>
-              <button
-                onClick={() => {
-                  useChatStore.getState().resumeGraph("继续执行");
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover text-status-success"
-              >
-                <Play size={12} />
-                继续项目
-              </button>
-              <button
-                onClick={() => {
-                  clearEvents();
-                  startGraph(activeTask.id, activeTask.name);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover text-text-secondary"
-              >
-                <RotateCcw size={12} />
-                重新开始
-              </button>
-            </>
-          )}
-          {!isRunning && !isPaused && !isCollecting && (
-            <button
-              onClick={() => {
-                clearEvents();
-                startGraph(activeTask.id, activeTask.name);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium glass glass-hover text-status-success"
-            >
-              <Play size={12} />
-              启动项目
-            </button>
-          )}
-        </div>
       </div>
 
       {/* 对话区滚动容器 */}
@@ -128,12 +72,13 @@ export function ChatArea() {
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
             <p className="text-text-muted text-sm">
-              {isCollecting ? "正在连接需求分析师..." : "新项目组已创建，等待启动..."}
+              {isCollecting ? "正在连接需求分析师..." : "等待对话..."}
             </p>
           </div>
         ) : (
           events.map((event, i) => {
             switch (event.type) {
+              case "agent_join":
               case "phase_start":
               case "phase_complete":
               case "task_complete":
