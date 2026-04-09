@@ -4,12 +4,13 @@ import type { AgentId } from "../../types";
 
 export function SystemMessage({ event }: { event: ChatEvent }) {
   const meta = event.agent ? AGENT_META[event.agent as AgentId] : null;
+  const displayName = event.agent_name || meta?.label;
 
-  if (event.type === "agent_join" && meta) {
+  if (event.type === "agent_join" && (meta || displayName)) {
     return (
       <div className="flex justify-center my-3">
         <span className="text-xs text-text-secondary">
-          — {meta.label} 加入了群聊 —
+          — {displayName} 加入了群聊 —
         </span>
       </div>
     );
@@ -21,7 +22,7 @@ export function SystemMessage({ event }: { event: ChatEvent }) {
     return (
       <div className="flex justify-center my-3">
         <span className="text-xs px-3 py-1 rounded-full bg-black/5 text-text-secondary">
-          {meta.emoji} {meta.label} 加入群聊
+          {meta.emoji} {displayName} 加入群聊
         </span>
       </div>
     );

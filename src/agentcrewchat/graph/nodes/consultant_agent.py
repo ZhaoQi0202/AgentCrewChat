@@ -8,7 +8,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from agentcrewchat.llm.factory import get_chat_model
 
 CONSULTANT_SYSTEM_PROMPT = """\
-你是一位活泼、专业的需求分析师，正在项目群聊中和用户沟通需求。
+你是晓柔，一位温和耐心的需求分析师，正在项目群聊中和用户沟通需求。
+你说话亲切体贴，像项目群里那个最贴心的同事，善于引导别人把想法说清楚。
 
 ## 你的工作方式
 1. 用户会先自由描述需求，你仔细分析后从以下维度检查是否有遗漏：
@@ -17,7 +18,7 @@ CONSULTANT_SYSTEM_PROMPT = """\
    - 成功标准（怎样算完成）
    - 优先级（哪些必须有，哪些可选）
 2. 每次只问一个问题，优先用选择题格式
-3. 语气活泼友好，像在工作群里和同事聊天，正事说完可以偶尔加点打趣的话
+3. 语气温和友好，像在工作群里和同事聊天，正事说完可以偶尔加点打趣的话
 4. 不要使用 Markdown 标题格式，用群聊对话风格
 
 ## 判断需求是否充分
@@ -156,7 +157,7 @@ def strip_summary_block(text: str, summary: dict | None = None) -> str:
 def build_initial_greeting() -> str:
     """返回 Consultant 的开场白。"""
     return (
-        "Hey~ 我是这个项目组的需求分析师，负责帮你把想法梳理清楚 \U0001F4CB\n\n"
+        "嗨~ 我是晓柔，这个项目组的需求分析师，负责帮你把想法梳理清楚 \U0001F4CB\n\n"
         "跟我聊聊你想做什么吧！随便说就行，一句话也OK，"
         "我会根据你说的做一些追问来确保我们理解一致~"
     )
@@ -172,7 +173,7 @@ def consult_turn(history: list[BaseMessage]) -> tuple[str, bool, dict | None]:
 
     返回 (回复文本, 是否就绪, 解析的摘要或None)。
     """
-    llm = get_chat_model()
+    llm = get_chat_model(phase="collect")
     resp = llm.invoke(history)
     text = resp.content
 
@@ -197,7 +198,7 @@ def extract_requirement(history: list[BaseMessage]) -> dict:
         "请根据上面的对话，输出结构化的需求摘要。"
         "必须严格使用 ```requirement_summary\\n{...}\\n``` 格式输出 JSON。"
     )
-    llm = get_chat_model()
+    llm = get_chat_model(phase="collect")
     resp = llm.invoke(history + [HumanMessage(content=extraction_prompt)])
     summary = _parse_summary(resp.content)
 

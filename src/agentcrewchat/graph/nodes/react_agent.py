@@ -35,6 +35,9 @@ def run_react_agent(
     thread_id: str = "",
     max_iterations: int = MAX_ITERATIONS,
     retry_feedback: str | None = None,
+    executor_name: str = "",
+    executor_color: str = "",
+    executor_personality_prompt: str = "",
 ) -> dict[str, Any]:
     """运行一个 ReAct Agent 完成指定任务。
 
@@ -47,8 +50,11 @@ def run_react_agent(
             "status": "completed" | "max_iterations" | "error",
             "output": str,  # Agent 的最终回复
             "tool_calls_count": int,
+            "executor_name": str,
         }
     """
+    display_name = executor_name or task_name
+
     criteria_text = "\n".join(f"  - {c}" for c in acceptance_criteria) if acceptance_criteria else "  - 无特定标准"
 
     system_prompt = (
@@ -67,6 +73,9 @@ def run_react_agent(
         f"5. 不要使用 Markdown 标题格式，像在工作群里汇报一样说话\n"
     )
 
+    if executor_personality_prompt:
+        system_prompt += f"\n\n## 你的性格\n{executor_personality_prompt}\n"
+
     if retry_feedback:
         system_prompt += (
             f"\n## ⚠️ 重要：上一次执行未通过审核\n"
@@ -79,11 +88,14 @@ def run_react_agent(
         HumanMessage(content=f"请开始执行任务「{task_name}」"),
     ]
 
-    llm = get_chat_model()
+    llm = get_chat_model(phase="execute")
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     tool_map = {t.name: t for t in tools}
     total_tool_calls = 0
+
+    # 构建 emit_event 通用字段
+    _ev = {"agent_name": display_name, "task_id": task_id}
 
     # 发送开始事件
     start_msg = (
@@ -95,8 +107,9 @@ def run_react_agent(
         "timestamp": _ts(),
         "phase": "experts",
         "agent": "experts",
+        "agent_name": display_name,
         "content": start_msg,
-        "metadata": {"agent_name": task_name, "task_id": task_id},
+        "metadata": _ev,
     })
 
     for iteration in range(max_iterations):
@@ -106,7 +119,8 @@ def run_react_agent(
             "timestamp": _ts(),
             "phase": "experts",
             "agent": "experts",
-            "metadata": {"agent_name": task_name, "task_id": task_id},
+            "agent_name": display_name,
+            "metadata": _ev,
         })
 
         try:
@@ -117,8 +131,9 @@ def run_react_agent(
                 "timestamp": _ts(),
                 "phase": "experts",
                 "agent": "experts",
+                "agent_name": display_name,
                 "content": f"呃...出了点问题: {e}",
-                "metadata": {"agent_name": task_name, "task_id": task_id},
+                "metadata": _ev,
             })
             return {
                 "task_id": task_id,
@@ -126,6 +141,7 @@ def run_react_agent(
                 "status": "error",
                 "output": str(e),
                 "tool_calls_count": total_tool_calls,
+                "executor_name": display_name,
             }
 
         messages.append(response)
@@ -139,8 +155,9 @@ def run_react_agent(
                 "timestamp": _ts(),
                 "phase": "experts",
                 "agent": "experts",
+                "agent_name": display_name,
                 "content": final_output,
-                "metadata": {"agent_name": task_name, "task_id": task_id},
+                "metadata": _ev,
             })
             return {
                 "task_id": task_id,
@@ -148,6 +165,7 @@ def run_react_agent(
                 "status": "completed",
                 "output": final_output,
                 "tool_calls_count": total_tool_calls,
+                "executor_name": display_name,
             }
 
         # 执行工具调用
@@ -165,8 +183,9 @@ def run_react_agent(
                 "timestamp": _ts(),
                 "phase": "experts",
                 "agent": "experts",
+                "agent_name": display_name,
                 "content": f"🔧 调用 {tool_name}: {args_preview}",
-                "metadata": {"agent_name": task_name, "task_id": task_id, "tool_call": True},
+                "metadata": {**_ev, "tool_call": True},
             })
 
             # 执行工具
@@ -191,8 +210,9 @@ def run_react_agent(
         "timestamp": _ts(),
         "phase": "experts",
         "agent": "experts",
+        "agent_name": display_name,
         "content": f"任务「{task_name}」达到最大执行步数({max_iterations})，先到这里吧",
-        "metadata": {"agent_name": task_name, "task_id": task_id},
+        "metadata": _ev,
     })
     return {
         "task_id": task_id,
@@ -200,4 +220,5 @@ def run_react_agent(
         "status": "max_iterations",
         "output": messages[-1].content if messages else "达到最大迭代次数",
         "tool_calls_count": total_tool_calls,
+        "executor_name": display_name,
     }

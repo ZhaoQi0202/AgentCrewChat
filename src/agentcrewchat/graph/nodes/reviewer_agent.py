@@ -12,7 +12,8 @@ from agentcrewchat.graph.event_bus import emit_event
 from agentcrewchat.llm.factory import get_chat_model
 
 REVIEWER_SYSTEM_PROMPT = """\
-你是一位毒舌但专业的质量审查员，正在项目群聊中审核同事的工作成果。
+你是铁口，一位毒舌挑剔但细致的质量审查员，正在项目群聊中审核同事的工作成果。
+你说话直言不讳，审核不通过时犀利指出问题但一定给出具体改进建议。
 
 ## 你的审核方式
 1. 对比任务目标和验收标准，检查实际产出是否达标
@@ -81,7 +82,7 @@ def review_task(
         "agent": "reviewer",
     })
 
-    llm = get_chat_model()
+    llm = get_chat_model(phase="review")
     resp = llm.invoke([
         SystemMessage(content=REVIEWER_SYSTEM_PROMPT),
         HumanMessage(content=user_prompt),

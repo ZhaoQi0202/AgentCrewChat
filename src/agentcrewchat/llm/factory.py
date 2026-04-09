@@ -80,11 +80,20 @@ def get_chat_model(
     *,
     install_root: Path | None = None,
     connection_id: str | None = None,
+    phase: str | None = None,
     **kwargs: Any,
 ) -> BaseChatModel:
     s = load_llm_settings(install_root)
     cfg_root = _config_root(install_root)
-    cid = (connection_id or s.default_model_connection_id or "").strip()
+
+    # 优先级：显式 connection_id > phase 配置 > 默认连接
+    cid = connection_id
+    if not cid and phase:
+        phase_conns = s.phase_model_connections
+        cid = getattr(phase_conns, phase, None)
+    if not cid:
+        cid = s.default_model_connection_id or ""
+    cid = cid.strip()
     if cid:
         ent = load_model_connection(cid, config_root=cfg_root)
         if ent is not None and ent.enabled:

@@ -26,6 +26,13 @@ export interface SkillEntry {
   scope: "app" | "task";
 }
 
+export interface PhaseModelConnections {
+  collect?: string;
+  architect?: string;
+  execute?: string;
+  review?: string;
+}
+
 export interface LlmSettings {
   default_model_connection_id: string | null;
   default_provider: "openai" | "anthropic";
@@ -33,6 +40,7 @@ export interface LlmSettings {
   anthropic_api_key: string;
   openai_model: string;
   anthropic_model: string;
+  phase_model_connections?: PhaseModelConnections;
 }
 
 // ── 任务类型 ──────────────────────────────────────────
@@ -64,6 +72,8 @@ export interface ChatEvent {
   timestamp: string;
   phase?: string;
   agent?: AgentId;
+  agent_name?: string;
+  agent_color?: string;
   content?: string;
   metadata?: Record<string, unknown>;
 }
@@ -79,6 +89,8 @@ export type AgentId =
 
 export interface AgentMeta {
   label: string;
+  role: string;
+  color: string;
   emoji: string;
   gradient: [string, string];
   nameColor: string;
@@ -86,31 +98,41 @@ export interface AgentMeta {
 
 export const AGENT_META: Record<AgentId, AgentMeta> = {
   consultant: {
-    label: "需求分析师",
+    label: "晓柔",
+    role: "需求分析师",
+    color: "#7c3aed",
     emoji: "\u{1F50D}",
     gradient: ["#8b5cf6", "#6366f1"],
     nameColor: "#7c3aed",
   },
   architect: {
-    label: "架构设计师",
+    label: "明哲",
+    role: "架构师",
+    color: "#2563eb",
     emoji: "\u{1F4D0}",
     gradient: ["#3b82f6", "#06b6d4"],
     nameColor: "#2563eb",
   },
   hitl_blueprint: {
-    label: "方案审核员",
+    label: "明哲",
+    role: "架构师",
+    color: "#2563eb",
     emoji: "\u23F8",
     gradient: ["#f59e0b", "#f97316"],
     nameColor: "#d97706",
   },
   experts: {
-    label: "执行专家组",
+    label: "执行者",
+    role: "执行",
+    color: "#0891b2",
     emoji: "\u26A1",
     gradient: ["#22c55e", "#10b981"],
     nameColor: "#16a34a",
   },
   reviewer: {
-    label: "质量审查员",
+    label: "铁口",
+    role: "审核员",
+    color: "#ea580c",
     emoji: "\u{1F50E}",
     gradient: ["#ec4899", "#f43f5e"],
     nameColor: "#db2777",

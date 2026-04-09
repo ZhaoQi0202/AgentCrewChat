@@ -67,6 +67,15 @@ class LoadedConfig(BaseModel):
     shell: ShellPolicy
 
 
+class PhaseModelConnections(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    collect: str | None = None
+    architect: str | None = None
+    execute: str | None = None
+    review: str | None = None
+
+
 class LlmSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -76,3 +85,4 @@ class LlmSettings(BaseModel):
     anthropic_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     anthropic_model: str = "claude-sonnet-4-20250514"
+    phase_model_connections: PhaseModelConnections = PhaseModelConnections()

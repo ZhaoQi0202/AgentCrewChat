@@ -103,7 +103,7 @@ export function SettingsPage() {
       </GlassCard>
 
       {/* 默认模型 */}
-      <GlassCard className="p-5 mb-6">
+      <GlassCard className="p-5 mb-4">
         <h3 className="text-sm font-semibold text-text-primary mb-4">默认模型</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -122,6 +122,47 @@ export function SettingsPage() {
               className="w-full bg-bg-elevated border border-border-subtle rounded-[var(--radius-sm)] px-3 py-2 text-sm text-text-primary outline-none focus:border-brand-purple/40 transition-colors"
             />
           </div>
+        </div>
+      </GlassCard>
+
+      {/* 阶段模型分配 */}
+      <GlassCard className="p-5 mb-6">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">阶段模型分配</h3>
+        <p className="text-xs text-text-muted mb-4">为每个工作阶段指定独立的模型连接，留空则跟随默认</p>
+        <div className="space-y-3">
+          {(
+            [
+              { key: "collect", label: "需求收集", agent: "晓柔" },
+              { key: "architect", label: "架构规划", agent: "明哲" },
+              { key: "execute", label: "任务执行", agent: "执行者" },
+              { key: "review", label: "质量审核", agent: "铁口" },
+            ] as const
+          ).map((phase) => (
+            <div key={phase.key} className="flex items-center gap-3">
+              <div className="w-20 shrink-0">
+                <span className="text-xs text-text-primary font-medium">{phase.label}</span>
+                <span className="text-[10px] text-text-muted ml-1">@{phase.agent}</span>
+              </div>
+              <select
+                value={form.phase_model_connections?.[phase.key] || ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    phase_model_connections: {
+                      ...(form.phase_model_connections || {}),
+                      [phase.key]: e.target.value || undefined,
+                    },
+                  })
+                }
+                className="flex-1 bg-bg-elevated border border-border-subtle rounded-[var(--radius-sm)] px-3 py-2 text-sm text-text-primary outline-none"
+              >
+                <option value="">跟随默认</option>
+                {modelConnections.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name || c.id}</option>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
       </GlassCard>
 
