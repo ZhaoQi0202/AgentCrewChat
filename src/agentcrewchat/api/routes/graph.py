@@ -155,7 +155,7 @@ async def _run_pipeline_after_confirm(
         constraints = summary_dict.get("constraints", {}) or {}
         tech_stack = constraints.get("tech_stack", []) if isinstance(constraints, dict) else []
 
-        lines = [f"@架构设计师 需求分析完成，把「{project_name}」的设计工作交给你了！"]
+        lines = [f"@明哲 需求分析完成，把「{project_name}」的设计工作交给你了！"]
         if core_goal:
             lines.append(f"核心目标：{core_goal}")
         if features:
@@ -173,20 +173,29 @@ async def _run_pipeline_after_confirm(
         lines.append("辛苦了～有啥问题随时说 🎯")
         handoff = "\n".join(lines)
     else:
-        handoff = "@架构设计师 需求确认完成，转交给你推进设计了！辛苦～ 🎯"
+        handoff = "@明哲 需求确认完成，转交给你推进设计了！辛苦～ 🎯"
 
+    # 1. 入群事件
     await websocket.send_json({
         "type": "agent_join",
         "timestamp": _ts(),
         "phase": "architect",
         "agent": "architect",
     })
+    # 2. 晓柔的一条合并交接消息
     await websocket.send_json({
         "type": "agent_output",
         "timestamp": _ts(),
         "phase": "consult",
         "agent": "consultant",
         "content": handoff,
+    })
+    # 3. 明哲思考中
+    await websocket.send_json({
+        "type": "agent_thinking",
+        "timestamp": _ts(),
+        "phase": "architect",
+        "agent": "architect",
     })
 
     await _pump_graph_to_ws(

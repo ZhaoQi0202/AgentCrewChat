@@ -10,14 +10,14 @@ interface AgentMessageProps {
 }
 
 export function AgentMessage({ event }: AgentMessageProps) {
-  const agentId = (event.agent || "consultant") as AgentId;
-  const meta = AGENT_META[agentId];
+  const agentId = (event.agent || "") as AgentId;
   const dynamicName = event.agent_name || (event.metadata?.agent_name as string | undefined);
+  // 有动态名字的执行 Agent 不走 AGENT_META
+  const meta = dynamicName ? null : (agentId ? AGENT_META[agentId] : null);
   const isToolCall = event.metadata?.tool_call === true;
   const isThinking = event.type === "agent_thinking";
 
-  const displayName = dynamicName || meta?.label || agentId;
-  const displayEmoji = dynamicName ? "\u26A1" : meta?.emoji || "\u{1F916}";
+  const displayName = dynamicName || meta?.label || agentId || "Agent";
   const displayColor = event.agent_color || meta?.color || meta?.nameColor || "#16a34a";
 
   const time = new Date(event.timestamp).toLocaleTimeString("zh-CN", {
@@ -27,6 +27,8 @@ export function AgentMessage({ event }: AgentMessageProps) {
 
   // 动态头像：使用 executor 主题色
   const avatarColor = event.agent_color || meta?.gradient?.[0];
+  // 动态 Agent 显示名字首字，固定 Agent 显示 emoji
+  const avatarChar = dynamicName ? dynamicName[0] : (meta?.emoji || "\u{1F916}");
 
   return (
     <motion.div
@@ -46,14 +48,14 @@ export function AgentMessage({ event }: AgentMessageProps) {
             fontSize: 14,
           }}
         >
-          {displayEmoji}
+          {avatarChar}
         </div>
       )}
       <div className="min-w-0 flex-1">
         {/* 头部：Agent 名称 + 时间 */}
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-sm font-semibold" style={{ color: displayColor }}>
-            {displayEmoji} {displayName}
+            {meta?.emoji ? `${meta.emoji} ` : ""}{displayName}
           </span>
           <span className="text-[10px] text-text-muted">{time}</span>
         </div>

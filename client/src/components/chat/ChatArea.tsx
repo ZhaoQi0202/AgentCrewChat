@@ -82,7 +82,7 @@ export function ChatArea() {
           return events.map((event, i) => {
             switch (event.type) {
               case "agent_join": {
-                const agentKey = event.agent ?? "";
+                const agentKey = event.agent_name || event.agent || "";
                 if (joinedAgents.has(agentKey)) return null;
                 joinedAgents.add(agentKey);
                 return <SystemMessage key={i} event={event} />;

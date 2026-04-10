@@ -9,9 +9,11 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.tools import BaseTool
 
 from agentcrewchat.graph.event_bus import emit_event
+from agentcrewchat.graph.pause_manager import wait_if_paused
 from agentcrewchat.llm.factory import get_chat_model
 
-MAX_ITERATIONS = 15
+# 连续无进展轮数上限（既没调工具也没产出新内容）
+_STALL_LIMIT = 3
 
 
 def _ts() -> str:
@@ -33,7 +35,6 @@ def run_react_agent(
     tools: list[BaseTool],
     workspace_path: str,
     thread_id: str = "",
-    max_iterations: int = MAX_ITERATIONS,
     retry_feedback: str | None = None,
     executor_name: str = "",
     executor_color: str = "",
@@ -42,13 +43,14 @@ def run_react_agent(
     """运行一个 ReAct Agent 完成指定任务。
 
     通过 event_bus 实时推送执行进展到前端。
+    无最大迭代上限，由 LLM 自行判断何时完成。
 
     返回:
         {
             "task_id": str,
             "task_name": str,
-            "status": "completed" | "max_iterations" | "error",
-            "output": str,  # Agent 的最终回复
+            "status": "completed" | "stalled" | "error",
+            "output": str,
             "tool_calls_count": int,
             "executor_name": str,
         }
@@ -68,9 +70,10 @@ def run_react_agent(
         f"## 工作规则\n"
         f"1. 使用提供的工具来完成任务\n"
         f"2. 每次只做一步操作，观察结果后再决定下一步\n"
-        f"3. 完成任务后，用简短活泼的语气总结你做了什么\n"
+        f"3. 完成任务后，用简洁的话总结你做了什么、产出了什么文件或结果\n"
         f"4. 如果遇到问题，先尝试解决，实在不行再说明情况\n"
         f"5. 不要使用 Markdown 标题格式，像在工作群里汇报一样说话\n"
+        f"6. 总结时说做了什么和结果，不要罗列工具调用细节\n"
     )
 
     if executor_personality_prompt:
@@ -105,23 +108,19 @@ def run_react_agent(
     emit_event(thread_id, {
         "type": "agent_output",
         "timestamp": _ts(),
-        "phase": "experts",
-        "agent": "experts",
+        "phase": "execute",
         "agent_name": display_name,
+        "agent_color": executor_color,
         "content": start_msg,
         "metadata": _ev,
     })
 
-    for iteration in range(max_iterations):
-        # 发送思考事件
-        emit_event(thread_id, {
-            "type": "agent_thinking",
-            "timestamp": _ts(),
-            "phase": "experts",
-            "agent": "experts",
-            "agent_name": display_name,
-            "metadata": _ev,
-        })
+    stall_count = 0
+    prev_content = ""
+
+    while True:
+        # 暂停检查：每轮 ReAct 迭代前检查
+        wait_if_paused(thread_id)
 
         try:
             response = llm_with_tools.invoke(messages)
@@ -129,9 +128,9 @@ def run_react_agent(
             emit_event(thread_id, {
                 "type": "agent_output",
                 "timestamp": _ts(),
-                "phase": "experts",
-                "agent": "experts",
+                "phase": "execute",
                 "agent_name": display_name,
+                "agent_color": executor_color,
                 "content": f"呃...出了点问题: {e}",
                 "metadata": _ev,
             })
@@ -150,12 +149,38 @@ def run_react_agent(
         if not hasattr(response, "tool_calls") or not response.tool_calls:
             # Agent 完成了，输出最终回复
             final_output = response.content or "任务完成"
+
+            # 检查是否真的完成了（有新内容），还是在空转
+            if final_output == prev_content:
+                stall_count += 1
+                if stall_count >= _STALL_LIMIT:
+                    emit_event(thread_id, {
+                        "type": "agent_output",
+                        "timestamp": _ts(),
+                        "phase": "execute",
+                        "agent_name": display_name,
+                        "agent_color": executor_color,
+                        "content": final_output,
+                        "metadata": _ev,
+                    })
+                    return {
+                        "task_id": task_id,
+                        "task_name": task_name,
+                        "status": "stalled",
+                        "output": final_output,
+                        "tool_calls_count": total_tool_calls,
+                        "executor_name": display_name,
+                    }
+                continue
+            else:
+                prev_content = final_output
+
             emit_event(thread_id, {
                 "type": "agent_output",
                 "timestamp": _ts(),
-                "phase": "experts",
-                "agent": "experts",
+                "phase": "execute",
                 "agent_name": display_name,
+                "agent_color": executor_color,
                 "content": final_output,
                 "metadata": _ev,
             })
@@ -168,27 +193,13 @@ def run_react_agent(
                 "executor_name": display_name,
             }
 
-        # 执行工具调用
+        # 执行工具调用（静默，不推送到群聊）
+        stall_count = 0
         for tool_call in response.tool_calls:
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
             total_tool_calls += 1
 
-            # 通知正在使用工具
-            args_preview = json.dumps(tool_args, ensure_ascii=False)
-            if len(args_preview) > 200:
-                args_preview = args_preview[:200] + "..."
-            emit_event(thread_id, {
-                "type": "agent_output",
-                "timestamp": _ts(),
-                "phase": "experts",
-                "agent": "experts",
-                "agent_name": display_name,
-                "content": f"🔧 调用 {tool_name}: {args_preview}",
-                "metadata": {**_ev, "tool_call": True},
-            })
-
-            # 执行工具
             tool_fn = tool_map.get(tool_name)
             if tool_fn:
                 try:
@@ -203,22 +214,3 @@ def run_react_agent(
                 content=result_str,
                 tool_call_id=tool_call["id"],
             ))
-
-    # 达到最大迭代次数
-    emit_event(thread_id, {
-        "type": "agent_output",
-        "timestamp": _ts(),
-        "phase": "experts",
-        "agent": "experts",
-        "agent_name": display_name,
-        "content": f"任务「{task_name}」达到最大执行步数({max_iterations})，先到这里吧",
-        "metadata": _ev,
-    })
-    return {
-        "task_id": task_id,
-        "task_name": task_name,
-        "status": "max_iterations",
-        "output": messages[-1].content if messages else "达到最大迭代次数",
-        "tool_calls_count": total_tool_calls,
-        "executor_name": display_name,
-    }

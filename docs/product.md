@@ -41,10 +41,12 @@
 |------|-------|----------|------|
 | **1 需求收集** | 晓柔（需求分析师） | 群里多轮对话，引导补充信息 | `requirement.json` |
 | **2 架构规划** | 明哲（架构师） | 发方案、等确认 | `blueprint.json` |
-| **3 多 Agent 执行** | 小某（执行者） | 多名执行者在群里推进 | `task_outputs/*.json` |
+| **3 多 Agent 执行** | 小某（执行者） | 多名执行者在群里推进，同层任务并行执行 | `task_outputs/*.json` |
 | **4 审核反馈** | 铁口（审核员） | 每任务执行后审核 | 审核结论 |
 
 **主流程**：新建项目组 → 进入群聊 → 阶段 1 → 用户确认 → 阶段 2 → 蓝图 HITL → 阶段 3+4 交织 → 最终汇总
+
+**执行阶段入群规则**：蓝图确认后，所有执行 Agent（小某）同时入群（`agent_join`），不在执行过程中逐个入群。右侧面板一次性展示所有执行 Agent 及其主题色。
 
 **需求收集收口**：模型判断要点齐备后向用户做摘要，用户确认后进入架构阶段并落盘结构化需求，不在未确认时自动切换阶段。
 
@@ -107,6 +109,8 @@
 - **禁止裸露 JSON 出现在聊天气泡**，所有面向用户的消息必须是人类可读的自然语言 + Markdown 格式
 - **Agent 间交接消息**：LLM 生成拟人化移交语，格式中包含 `@对应名称`，前端将 `@名称` 渲染为对应 Agent 主题色
 - **`@名称` 解析规则**：**只匹配已知 Agent 名字列表**（晓柔、明哲、铁口 + 当前项目组的动态执行 Agent 名），不使用通用正则，避免误触发
+- **需求收集选项格式**：晓柔给用户选项时使用 A/B/C 格式（如 `A. 方案一` / `B. 方案二`），用户可直接输入 A/B/C 回复选择
+- **不存在名为 "experts" 或 "执行者" 的 Agent**：执行阶段没有统一的入口 Agent，每个执行任务由各自的「小某」直接入群工作
 
 ---
 
@@ -187,9 +191,9 @@
 
 ### 9.1 暂停/继续
 
-- **真正的任务间暂停**：后端每个 session 维护 `asyncio.Event` 信号，执行 Agent 在任务间隙检查信号
-- 暂停粒度：**任务间**（当前任务跑完后才停，任务执行中途不停）
-- 继续时从断点恢复
+- **ReAct 迭代级暂停**：后端每个 session 维护 `threading.Event` 信号，执行 Agent 在 ReAct 循环每轮开始前检查信号
+- 暂停粒度：**当前 ReAct 迭代完成后停下**（不会中断正在执行的工具调用，但不会再开始下一轮思考）
+- 继续时从断点恢复（下一轮 ReAct 迭代开始）
 
 ### 9.2 审核重试与兜底
 
@@ -218,6 +222,32 @@
 5. 分配给同一个或新的执行 Agent 重新执行
 6. 替代方案只有一次机会，若仍失败则只能跳过或终止
 
+### 9.4 执行汇报策略
+
+每个执行 Agent 在群聊中的汇报频率：
+
+| 节点 | 是否汇报 | 内容 |
+|------|----------|------|
+| 开始执行 | 是 | "收到任务「xxx」，开始干活！💪" |
+| 工具调用过程 | **否** | 静默执行，不展示方法名和参数 |
+| 关键步骤完成 | 是 | 如"xxx 文件已创建"、"依赖安装完成" |
+| 任务完成 | 是 | 最终结果总结（LLM 生成自然语言） |
+
+- 禁止在聊天气泡中展示工具调用的函数名、参数 JSON
+- 最终汇报使用自然语言描述做了什么、产出了什么
+
+### 9.5 同层并行执行
+
+- 蓝图拓扑排序后，同层（无依赖关系的）任务**并行执行**
+- 使用 `threading` 实现：同层任务分配到线程池，每个线程独立运行 ReAct 循环
+- 消息通过 `emit_event`（线程安全）推送到 WS，前端看到的消息可能交错（不同 Agent 的发言交替出现），这是正常行为
+- 跨层依赖仍然串行：第一层全部完成后才开始第二层
+
+### 9.6 ReAct 迭代策略
+
+- **无最大迭代上限**：不设 `MAX_ITERATIONS`，由 LLM 自行判断何时完成任务
+- **安全退出**：如果 LLM 连续多轮既不调用工具也不产出新内容，自动判定为完成
+
 ---
 
 ## 10. 功能需求清单
@@ -242,6 +272,14 @@
 | F-16 | Skills 启用/禁用开关 UI | **已完成（Batch 4）** |
 | F-17 | 蓝图 HITL | 已实现 |
 | F-18 | DAG 执行 + 单任务审核 + 重试 | 已实现 |
+| F-19 | 需求收集选项 A/B/C 格式 | 待实现 |
+| F-20 | 需求确认后合并为一条交接消息（@明哲） | 待实现 |
+| F-21 | 等待架构师时显示思考动画 | 待实现 |
+| F-22 | 执行 Agent 同时批量入群 | 待实现 |
+| F-23 | 同层任务并行执行 | 待实现 |
+| F-24 | 执行汇报精简：仅开始+关键步骤+完成 | 待实现 |
+| F-25 | 去掉 ReAct 迭代上限 | 待实现 |
+| F-26 | 删除 "experts" 统一入口 Agent | 待实现 |
 
 ---
 
@@ -250,10 +288,15 @@
 | ID | 主题 | 说明 |
 |----|------|------|
 | G1 | 蓝图工具 ID vs 执行 | **已完成（Batch 1）** |
-| G2 | 暂停按钮是假的 | **已完成（Batch 3）** |
+| G2 | 暂停不生效（ReAct 循环内无检查） | 待修复 |
 | G3 | 审核超限静默继续 | **已完成（Batch 3）** |
 | G4 | WS 断线 | **已完成（Batch 4）** |
 | G5 | Agent 名字未落地 | **已完成（Batch 1）** |
+| G6 | 执行阶段有无意义的 "experts" 统一入口 | 待修复 |
+| G7 | 执行 Agent 逐个入群而非批量 | 待修复 |
+| G8 | 执行过程工具调用细节暴露过多 | 待修复 |
+| G9 | 需求确认后晓柔发了两条消息 | 待修复 |
+| G10 | 交接消息 @架构设计师 而非 @明哲 | 待修复 |
 
 ---
 
@@ -280,6 +323,9 @@
 | 架构师节点 | `graph/nodes/architect_agent.py` |
 | 审核员节点 | `graph/nodes/reviewer_agent.py` |
 | DAG + 单任务审核循环 | `graph/orchestrator.py` |
+| 暂停管理 | `graph/pause_manager.py` |
+| 审核超限决策 | `graph/decision_handler.py` |
+| 执行 Agent 身份 | `graph/executor_identity.py` |
 | 工具实例化 | `tools/tool_registry.py` |
 | 工作区与 venv | `tasks/workspace.py` |
 | Skills 合并 | `skills/registry.py` |
@@ -306,16 +352,22 @@
 | `confirm_start` | 确认后触发流水线 |
 | `resume` | HITL 从中断点向前 |
 | `start` | 跳过 collect 直接跑（调试用） |
+| `pause` | 暂停执行（ReAct 迭代级） |
+| `resume_pause` | 从暂停中恢复 |
+| `decision` | 审核超限用户决策（skip/reroute/terminate） |
+| `reconnect` | WS 断线重连 |
 
 ### 13.4 WebSocket 事件 type（服务端 → 客户端）
 
-`phase_start`、`agent_join`、`agent_thinking`、`agent_output`、`hitl_interrupt`、`task_complete`、`error`
+`phase_start`、`agent_join`、`agent_thinking`、`agent_output`、`hitl_interrupt`、`hitl_retry_limit`、`task_complete`、`error`
 
 ### 13.5 LangGraph 拓扑
 
-节点顺序：`consultant` → `architect` → `hitl_blueprint` → `experts` → `reviewer` → END  
-`interrupt_before`：`hitl_blueprint`、`reviewer`  
+节点顺序：`consultant` → `architect` → `hitl_blueprint` → `orchestrator`（调度多个小某执行） → `reviewer` → END
+`interrupt_before`：`hitl_blueprint`
 Checkpoint：`data/checkpoints.sqlite`
+
+注意：执行阶段没有统一的 "experts" 节点。orchestrator 直接调度多个执行 Agent（小某），每个任务独立创建身份、独立运行 ReAct 循环。
 
 ---
 

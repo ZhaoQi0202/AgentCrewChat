@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from agentcrewchat.graph.decision_handler import (
     wait_for_decision,
 )
 from agentcrewchat.graph.event_bus import emit_event
-from agentcrewchat.graph.executor_identity import create_executor_identity
+from agentcrewchat.graph.executor_identity import ExecutorIdentity, create_executor_identity
 from agentcrewchat.graph.nodes.react_agent import run_react_agent
 from agentcrewchat.graph.nodes.reviewer_agent import review_task
 from agentcrewchat.graph.pause_manager import wait_if_paused
@@ -44,10 +45,8 @@ def _topological_sort(tasks: list[dict]) -> list[list[dict]]:
     remaining = set(in_degree.keys())
 
     while remaining:
-        # 找出入度为 0 的任务
         ready = [tid for tid in remaining if in_degree[tid] == 0]
         if not ready:
-            # 有循环依赖，把剩余的都放一层
             ready = list(remaining)
         layer = [task_map[tid] for tid in ready]
         layers.append(layer)
@@ -80,7 +79,7 @@ def _reroute_task(
     emit_event(thread_id, {
         "type": "agent_output",
         "timestamp": _ts(),
-        "phase": "experts",
+        "phase": "execute",
         "agent": "architect",
         "content": f"收到，「{task.get('name')}」没跑通，我来看看怎么调整方案 🔧",
     })
@@ -98,9 +97,234 @@ def _reroute_task(
     _, blueprint = generate_blueprint(reroute_requirement, workspace)
     if blueprint and blueprint.get("tasks"):
         new_task = blueprint["tasks"][0]
-        new_task["id"] = task.get("id")  # 保持原 task_id
+        new_task["id"] = task.get("id")
         return new_task
     return None
+
+
+def _execute_single_task(
+    task: dict,
+    identity: ExecutorIdentity,
+    blueprint: dict,
+    workspace: Path,
+    thread_id: str,
+    completed_tasks: dict[str, dict],
+) -> dict:
+    """执行单个任务（含审核+重试循环）。线程安全。"""
+    task_id = task["id"]
+    task_name = task.get("name", task_id)
+    task_goal = task.get("goal", "")
+    criteria = task.get("acceptance_criteria", [])
+    tool_ids = task.get("tools", [])
+    deps = task.get("depends_on", [])
+
+    # 暂停检查
+    wait_if_paused(thread_id)
+
+    # @上游 Agent 互动
+    if deps:
+        dep_executor_names = [
+            completed_tasks[d]["executor_name"]
+            for d in deps if d in completed_tasks and completed_tasks[d].get("executor_name")
+        ]
+        if dep_executor_names:
+            mentions = "、".join(f"@{n}" for n in dep_executor_names)
+            emit_event(thread_id, {
+                "type": "agent_output",
+                "timestamp": _ts(),
+                "phase": "execute",
+                "agent_name": identity.name,
+                "agent_color": identity.color,
+                "content": f"{mentions} 的产出我看到了，接下来轮到我「{task_name}」了！",
+                "metadata": {"agent_name": identity.name, "task_id": task_id},
+            })
+
+    # 创建工具
+    tools = create_tools_for_task(tool_ids, workspace, task_id=task_id)
+
+    # 执行 + 审核 + 重试循环
+    retry_feedback = None
+    final_result = None
+    review_passed = False
+    review_msg = ""
+
+    for attempt in range(MAX_AGENT_RETRY + 1):
+        result = run_react_agent(
+            task_id=task_id,
+            task_name=task_name,
+            task_goal=task_goal,
+            acceptance_criteria=criteria,
+            tools=tools,
+            workspace_path=str(workspace),
+            thread_id=thread_id,
+            retry_feedback=retry_feedback,
+            executor_name=identity.name,
+            executor_color=identity.color,
+            executor_personality_prompt=identity.personality_prompt,
+        )
+        final_result = result
+
+        if result["status"] == "error":
+            break
+
+        # 审核
+        review_passed, review_msg = review_task(
+            task_id=task_id,
+            task_name=task_name,
+            task_goal=task_goal,
+            acceptance_criteria=criteria,
+            agent_output=result["output"],
+            thread_id=thread_id,
+        )
+
+        if review_passed:
+            break
+
+        if attempt < MAX_AGENT_RETRY:
+            retry_feedback = review_msg
+            emit_event(thread_id, {
+                "type": "agent_output",
+                "timestamp": _ts(),
+                "phase": "execute",
+                "agent_name": identity.name,
+                "agent_color": identity.color,
+                "content": f"🔄 任务「{task_name}」审核未通过（第 {attempt + 1}/{MAX_AGENT_RETRY} 次），根据反馈重新执行...",
+                "metadata": {"agent_name": identity.name, "task_id": task_id},
+            })
+
+    # 记录最终结果
+    final_result["review_passed"] = review_passed
+    final_result["retry_count"] = min(attempt, MAX_AGENT_RETRY) if final_result["status"] != "error" else 0
+    final_result["executor_name"] = identity.name
+
+    # 审核结果处理
+    if review_passed:
+        emit_event(thread_id, {
+            "type": "agent_output",
+            "timestamp": _ts(),
+            "phase": "execute",
+            "agent_name": identity.name,
+            "agent_color": identity.color,
+            "content": f"✅ 任务「{task_name}」执行完毕并通过审核！",
+            "metadata": {"agent_name": identity.name, "task_id": task_id},
+        })
+    elif task.get("_rerouted"):
+        can_reroute = False
+        limit_msg = generate_review_limit_message(task_name, task_goal, review_msg or "")
+        emit_event(thread_id, {
+            "type": "agent_output",
+            "timestamp": _ts(),
+            "phase": "review",
+            "agent": "reviewer",
+            "content": f"🔍 @{identity.name} 重规划后仍未通过：\n{limit_msg}",
+            "metadata": {
+                "task_id": task_id,
+                "verdict": "over_limit",
+                "quick_replies": ["跳过继续", "终止执行"],
+            },
+        })
+        emit_event(thread_id, {
+            "type": "hitl_retry_limit",
+            "timestamp": _ts(),
+            "phase": "review",
+            "agent": "reviewer",
+            "content": "等待用户决策",
+            "metadata": {"task_id": task_id},
+        })
+        decision = wait_for_decision(thread_id)
+        if decision == "terminate":
+            final_result["_terminate"] = True
+    else:
+        limit_msg = generate_review_limit_message(task_name, task_goal, review_msg or "")
+        emit_event(thread_id, {
+            "type": "agent_output",
+            "timestamp": _ts(),
+            "phase": "review",
+            "agent": "reviewer",
+            "content": f"🔍 @{identity.name} 审核未通过（{MAX_AGENT_RETRY} 次上限）：\n{limit_msg}",
+            "metadata": {
+                "task_id": task_id,
+                "verdict": "over_limit",
+                "quick_replies": ["跳过继续", "交还明哲", "终止执行"],
+            },
+        })
+        emit_event(thread_id, {
+            "type": "hitl_retry_limit",
+            "timestamp": _ts(),
+            "phase": "review",
+            "agent": "reviewer",
+            "content": "等待用户决策",
+            "metadata": {"task_id": task_id},
+        })
+        decision = wait_for_decision(thread_id)
+        if decision == "terminate":
+            final_result["_terminate"] = True
+        elif decision == "reroute":
+            task["_rerouted"] = True
+            new_task = _reroute_task(
+                task=task,
+                review_msg=review_msg or "",
+                result=final_result,
+                workspace=workspace,
+                thread_id=thread_id,
+            )
+            if new_task:
+                for i, t in enumerate(blueprint["tasks"]):
+                    if t["id"] == task_id:
+                        blueprint["tasks"][i] = new_task
+                        break
+                rerouted_result = run_react_agent(
+                    task_id=task_id,
+                    task_name=new_task.get("name", task_name),
+                    task_goal=new_task.get("goal", task_goal),
+                    acceptance_criteria=new_task.get("acceptance_criteria", criteria),
+                    tools=create_tools_for_task(new_task.get("tools", tool_ids), workspace, task_id=task_id),
+                    workspace_path=str(workspace),
+                    thread_id=thread_id,
+                    retry_feedback=review_msg,
+                    executor_name=identity.name,
+                    executor_color=identity.color,
+                    executor_personality_prompt=identity.personality_prompt,
+                )
+                final_result = rerouted_result
+                final_result["executor_name"] = identity.name
+
+                if rerouted_result["status"] != "error":
+                    rerouted_passed, rerouted_msg = review_task(
+                        task_id=task_id,
+                        task_name=new_task.get("name", task_name),
+                        task_goal=new_task.get("goal", task_goal),
+                        acceptance_criteria=new_task.get("acceptance_criteria", criteria),
+                        agent_output=rerouted_result["output"],
+                        thread_id=thread_id,
+                    )
+                    if rerouted_passed:
+                        final_result["review_passed"] = True
+                        emit_event(thread_id, {
+                            "type": "agent_output",
+                            "timestamp": _ts(),
+                            "phase": "execute",
+                            "agent_name": identity.name,
+                            "agent_color": identity.color,
+                            "content": f"✅ 任务「{task_name}」重规划后执行完毕并通过审核！",
+                            "metadata": {"agent_name": identity.name, "task_id": task_id},
+                        })
+                    else:
+                        final_result["review_passed"] = False
+                else:
+                    final_result["review_passed"] = False
+            else:
+                emit_event(thread_id, {
+                    "type": "agent_output",
+                    "timestamp": _ts(),
+                    "phase": "execute",
+                    "agent_name": identity.name,
+                    "agent_color": identity.color,
+                    "content": f"⚠️ 架构师未能为「{task_name}」生成替代方案，跳过继续",
+                    "metadata": {"agent_name": identity.name, "task_id": task_id},
+                })
+
+    return final_result
 
 
 def run_orchestration(
@@ -108,25 +332,9 @@ def run_orchestration(
     workspace: Path,
     thread_id: str = "",
 ) -> list[dict[str, Any]]:
-    """按 DAG 依赖关系执行所有任务。
-
-    Args:
-        blueprint: 架构师生成的任务规划（含 tasks 列表）
-        workspace: 项目组工作目录
-        thread_id: event_bus 路由 ID
-
-    Returns:
-        所有任务的执行结果列表
-    """
+    """按 DAG 依赖关系执行所有任务。"""
     tasks = blueprint.get("tasks", [])
     if not tasks:
-        emit_event(thread_id, {
-            "type": "agent_output",
-            "timestamp": _ts(),
-            "phase": "experts",
-            "agent": "experts",
-            "content": "蓝图里没有任务，没啥好干的 🤷",
-        })
         return []
 
     layers = _topological_sort(tasks)
@@ -135,297 +343,71 @@ def run_orchestration(
     used_names: set[str] = set()
     used_colors: set[str] = set()
 
-    emit_event(thread_id, {
-        "type": "agent_join",
-        "timestamp": _ts(),
-        "phase": "experts",
-        "agent": "experts",
-    })
-    emit_event(thread_id, {
-        "type": "agent_output",
-        "timestamp": _ts(),
-        "phase": "experts",
-        "agent": "experts",
-        "content": f"开始执行！一共 {len(tasks)} 个任务，分 {len(layers)} 层依次推进",
-    })
+    # 预创建所有执行 Agent 身份
+    task_identities: dict[str, ExecutorIdentity] = {}
+    for task in tasks:
+        task_identities[task["id"]] = create_executor_identity(task["id"], used_names, used_colors)
 
+    # 批量入群：所有执行 Agent 同时加入
+    for task in tasks:
+        ident = task_identities[task["id"]]
+        emit_event(thread_id, {
+            "type": "agent_join",
+            "timestamp": _ts(),
+            "phase": "execute",
+            "agent_name": ident.name,
+            "agent_color": ident.color,
+            "metadata": {"task_id": task["id"], "task_name": task.get("name", task["id"])},
+        })
+
+    # 按层执行
     for layer_idx, layer in enumerate(layers):
-        if len(layer) > 1:
-            names = "、".join(t["name"] for t in layer)
-            emit_event(thread_id, {
-                "type": "agent_output",
-                "timestamp": _ts(),
-                "phase": "experts",
-                "agent": "experts",
-                "content": f"📋 第 {layer_idx + 1} 层：{names}（这些任务可以并行，当前逐个执行）",
-            })
-
-        for task in layer:
-            task_id = task["id"]
-            task_name = task.get("name", task_id)
-            task_goal = task.get("goal", "")
-            criteria = task.get("acceptance_criteria", [])
-            tool_ids = task.get("tools", [])
-            deps = task.get("depends_on", [])
-
-            # 暂停检查：阻塞直到暂停解除
-            wait_if_paused(thread_id)
-
-            # 创建执行 Agent 身份
-            identity = create_executor_identity(task_id, used_names, used_colors)
-
-            # @上游 Agent 互动
-            if deps:
-                dep_executor_names = [
-                    completed_tasks[d]["executor_name"]
-                    for d in deps if d in completed_tasks and completed_tasks[d].get("executor_name")
-                ]
-                if dep_executor_names:
-                    mentions = "、".join(f"@{n}" for n in dep_executor_names)
-                    emit_event(thread_id, {
-                        "type": "agent_output",
-                        "timestamp": _ts(),
-                        "phase": "experts",
-                        "agent": "experts",
-                        "agent_name": identity.name,
-                        "agent_color": identity.color,
-                        "content": f"{mentions} 的产出我看到了，接下来轮到我「{task_name}」了！",
-                        "metadata": {"agent_name": identity.name, "task_id": task_id},
-                    })
-
-            # 创建工具
-            tools = create_tools_for_task(tool_ids, workspace, task_id=task_id)
-
-            # 执行 + 审核 + 重试循环
-            retry_feedback = None
-            final_result = None
-            review_passed = False
-            review_msg = ""
-
-            for attempt in range(MAX_AGENT_RETRY + 1):
-                result = run_react_agent(
-                    task_id=task_id,
-                    task_name=task_name,
-                    task_goal=task_goal,
-                    acceptance_criteria=criteria,
-                    tools=tools,
-                    workspace_path=str(workspace),
-                    thread_id=thread_id,
-                    retry_feedback=retry_feedback,
-                    executor_name=identity.name,
-                    executor_color=identity.color,
-                    executor_personality_prompt=identity.personality_prompt,
-                )
-                final_result = result
-
-                # 如果 Agent 本身出错，不审核直接跳过
-                if result["status"] == "error":
-                    break
-
-                # 审核
-                review_passed, review_msg = review_task(
-                    task_id=task_id,
-                    task_name=task_name,
-                    task_goal=task_goal,
-                    acceptance_criteria=criteria,
-                    agent_output=result["output"],
-                    thread_id=thread_id,
-                )
-
-                if review_passed:
-                    break
-
-                # 审核不通过，检查是否还有重试次数
-                if attempt < MAX_AGENT_RETRY:
-                    retry_feedback = review_msg
-                    emit_event(thread_id, {
-                        "type": "agent_output",
-                        "timestamp": _ts(),
-                        "phase": "experts",
-                        "agent": "experts",
-                        "agent_name": identity.name,
-                        "agent_color": identity.color,
-                        "content": f"🔄 任务「{task_name}」审核未通过（第 {attempt + 1}/{MAX_AGENT_RETRY} 次），根据反馈重新执行...",
-                        "metadata": {"agent_name": identity.name, "task_id": task_id},
-                    })
-
-            # 记录最终结果
-            final_result["review_passed"] = review_passed
-            final_result["retry_count"] = min(attempt, MAX_AGENT_RETRY) if final_result["status"] != "error" else 0
-            final_result["executor_name"] = identity.name
-
-            # 审核结果处理
-            if review_passed:
-                emit_event(thread_id, {
-                    "type": "agent_output",
-                    "timestamp": _ts(),
-                    "phase": "experts",
-                    "agent": "experts",
-                    "agent_name": identity.name,
-                    "agent_color": identity.color,
-                    "content": f"✅ 任务「{task_name}」执行完毕并通过审核！（工具调用: {final_result['tool_calls_count']}次）",
-                    "metadata": {"agent_name": identity.name, "task_id": task_id},
-                })
-            elif task.get("_rerouted"):
-                # 已重规划过，不能再 reroute，只允许 skip 或 terminate
-                can_reroute = False
-                limit_msg = generate_review_limit_message(task_name, task_goal, review_msg or "")
-                emit_event(thread_id, {
-                    "type": "agent_output",
-                    "timestamp": _ts(),
-                    "phase": "review",
-                    "agent": "reviewer",
-                    "content": f"🔍 @{identity.name} 重规划后仍未通过：\n{limit_msg}",
-                    "metadata": {
-                        "task_id": task_id,
-                        "verdict": "over_limit",
-                        "quick_replies": ["跳过继续", "终止执行"],
-                    },
-                })
-                emit_event(thread_id, {
-                    "type": "hitl_retry_limit",
-                    "timestamp": _ts(),
-                    "phase": "review",
-                    "agent": "reviewer",
-                    "content": "等待用户决策",
-                    "metadata": {"task_id": task_id},
-                })
-                decision = wait_for_decision(thread_id)
-                if decision == "terminate":
-                    emit_event(thread_id, {
-                        "type": "agent_output",
-                        "timestamp": _ts(),
-                        "phase": "experts",
-                        "agent": "experts",
-                        "content": "流水线已终止 🛑",
-                    })
-                    completed_tasks[task_id] = final_result
-                    all_results.append(final_result)
-                    _save_task_output(workspace, task_id, final_result)
-                    return all_results
-                # skip: 继续
-            else:
-                # 首次超限，提供 skip / reroute / terminate
-                limit_msg = generate_review_limit_message(task_name, task_goal, review_msg or "")
-                emit_event(thread_id, {
-                    "type": "agent_output",
-                    "timestamp": _ts(),
-                    "phase": "review",
-                    "agent": "reviewer",
-                    "content": f"🔍 @{identity.name} 审核未通过（{MAX_AGENT_RETRY} 次上限）：\n{limit_msg}",
-                    "metadata": {
-                        "task_id": task_id,
-                        "verdict": "over_limit",
-                        "quick_replies": ["跳过继续", "交还明哲", "终止执行"],
-                    },
-                })
-                emit_event(thread_id, {
-                    "type": "hitl_retry_limit",
-                    "timestamp": _ts(),
-                    "phase": "review",
-                    "agent": "reviewer",
-                    "content": "等待用户决策",
-                    "metadata": {"task_id": task_id},
-                })
-                decision = wait_for_decision(thread_id)
-                if decision == "terminate":
-                    emit_event(thread_id, {
-                        "type": "agent_output",
-                        "timestamp": _ts(),
-                        "phase": "experts",
-                        "agent": "experts",
-                        "content": "流水线已终止 🛑",
-                    })
-                    completed_tasks[task_id] = final_result
-                    all_results.append(final_result)
-                    _save_task_output(workspace, task_id, final_result)
-                    return all_results
-                elif decision == "reroute":
-                    task["_rerouted"] = True
-                    new_task = _reroute_task(
-                        task=task,
-                        review_msg=review_msg or "",
-                        result=final_result,
-                        workspace=workspace,
-                        thread_id=thread_id,
+        if len(layer) == 1:
+            # 单任务，直接执行
+            task = layer[0]
+            identity = task_identities[task["id"]]
+            result = _execute_single_task(
+                task, identity, blueprint, workspace, thread_id, completed_tasks,
+            )
+            completed_tasks[task["id"]] = result
+            all_results.append(result)
+            _save_task_output(workspace, task["id"], result)
+            if result.get("_terminate"):
+                return all_results
+        else:
+            # 同层并行执行
+            with ThreadPoolExecutor(max_workers=len(layer)) as pool:
+                futures = {}
+                for task in layer:
+                    identity = task_identities[task["id"]]
+                    f = pool.submit(
+                        _execute_single_task,
+                        task, identity, blueprint, workspace, thread_id, completed_tasks,
                     )
-                    if new_task:
-                        # 替换蓝图中的任务节点
-                        for i, t in enumerate(blueprint["tasks"]):
-                            if t["id"] == task_id:
-                                blueprint["tasks"][i] = new_task
-                                break
-                        # 重新执行 reroute 后的任务
-                        rerouted_result = run_react_agent(
-                            task_id=task_id,
-                            task_name=new_task.get("name", task_name),
-                            task_goal=new_task.get("goal", task_goal),
-                            acceptance_criteria=new_task.get("acceptance_criteria", criteria),
-                            tools=create_tools_for_task(new_task.get("tools", tool_ids), workspace, task_id=task_id),
-                            workspace_path=str(workspace),
-                            thread_id=thread_id,
-                            retry_feedback=review_msg,
-                            executor_name=identity.name,
-                            executor_color=identity.color,
-                            executor_personality_prompt=identity.personality_prompt,
-                        )
-                        final_result = rerouted_result
-                        final_result["executor_name"] = identity.name
-
-                        # 审核 reroute 后的结果
-                        if rerouted_result["status"] != "error":
-                            rerouted_passed, rerouted_msg = review_task(
-                                task_id=task_id,
-                                task_name=new_task.get("name", task_name),
-                                task_goal=new_task.get("goal", task_goal),
-                                acceptance_criteria=new_task.get("acceptance_criteria", criteria),
-                                agent_output=rerouted_result["output"],
-                                thread_id=thread_id,
-                            )
-                            if rerouted_passed:
-                                final_result["review_passed"] = True
-                                emit_event(thread_id, {
-                                    "type": "agent_output",
-                                    "timestamp": _ts(),
-                                    "phase": "experts",
-                                    "agent": "experts",
-                                    "agent_name": identity.name,
-                                    "agent_color": identity.color,
-                                    "content": f"✅ 任务「{task_name}」重规划后执行完毕并通过审核！",
-                                    "metadata": {"agent_name": identity.name, "task_id": task_id},
-                                })
-                            else:
-                                # reroute 后仍不通过，标记 _rerouted 让下次走已重规划分支
-                                review_msg = rerouted_msg
-                                final_result["review_passed"] = False
-                        else:
-                            final_result["review_passed"] = False
-                    else:
-                        # 架构师无法生成替代方案
-                        emit_event(thread_id, {
-                            "type": "agent_output",
-                            "timestamp": _ts(),
-                            "phase": "experts",
-                            "agent": "experts",
-                            "agent_name": identity.name,
-                            "agent_color": identity.color,
-                            "content": f"⚠️ 架构师未能为「{task_name}」生成替代方案，跳过继续",
-                            "metadata": {"agent_name": identity.name, "task_id": task_id},
-                        })
-                # skip: 继续后续任务
-
-            completed_tasks[task_id] = final_result
-            all_results.append(final_result)
-            _save_task_output(workspace, task_id, final_result)
+                    futures[f] = task
+                for f in as_completed(futures):
+                    task = futures[f]
+                    result = f.result()
+                    completed_tasks[task["id"]] = result
+                    all_results.append(result)
+                    _save_task_output(workspace, task["id"], result)
+                    if result.get("_terminate"):
+                        # 取消其他 futures
+                        for other_f in futures:
+                            other_f.cancel()
+                        return all_results
 
     # 汇总
     passed_count = sum(1 for r in all_results if r.get("review_passed"))
     total = len(all_results)
+    # 找第一个 agent 来发汇总消息
+    first_ident = task_identities[tasks[0]["id"]]
     emit_event(thread_id, {
         "type": "agent_output",
         "timestamp": _ts(),
-        "phase": "experts",
-        "agent": "experts",
+        "phase": "execute",
+        "agent_name": first_ident.name,
+        "agent_color": first_ident.color,
         "content": f"🎯 所有任务执行完毕！{passed_count}/{total} 个任务通过审核",
     })
 

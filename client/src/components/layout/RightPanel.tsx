@@ -7,7 +7,7 @@ import { GlassCard } from "../shared/GlassCard";
 const PHASE_PANELS = [
   { key: "consult", label: "需求收集", agentIds: ["consultant"] as AgentId[] },
   { key: "architect", label: "架构规划", agentIds: ["architect"] as AgentId[] },
-  { key: "execute", label: "执行", agentIds: ["experts"] as AgentId[] },
+  { key: "execute", label: "执行", agentIds: [] as AgentId[] },
   { key: "review", label: "审核", agentIds: ["reviewer"] as AgentId[] },
 ] as const;
 
