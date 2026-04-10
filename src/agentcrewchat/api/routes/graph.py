@@ -38,6 +38,26 @@ def _ts() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _persist_event(task_id: str, event: dict) -> None:
+    """将事件持久化到 chat_history.json（用于 collect 阶段等非 event_bus 路径）。"""
+    if not task_id:
+        return
+    try:
+        history_path = workspaces_dir() / task_id / "chat_history.json"
+        if not history_path.parent.exists():
+            return
+        events = []
+        if history_path.is_file():
+            try:
+                events = json.loads(history_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                events = []
+        events.append(event)
+        history_path.write_text(json.dumps(events, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _iter_graph_events(graph: Any, input_obj: Any, cfg: dict) -> Iterator[dict[str, Any]]:
     # 手动发过的节点不再重复发 agent_join/agent_output
     _suppress_nodes = {"consultant", "architect"}
@@ -230,21 +250,25 @@ async def _run_pipeline_after_confirm(
         handoff = "@明哲 需求确认完成，转交给你推进设计了！辛苦～ 🎯"
 
     # 1. 入群事件
-    await websocket.send_json({
+    join_ev = {
         "type": "agent_join",
         "timestamp": _ts(),
         "phase": "architect",
         "agent": "architect",
-    })
+    }
     # 2. 晓柔的一条合并交接消息
-    await websocket.send_json({
+    handoff_ev = {
         "type": "agent_output",
         "timestamp": _ts(),
         "phase": "consult",
         "agent": "consultant",
         "content": handoff,
-    })
-    # 3. 明哲思考中
+    }
+    _persist_event(task_id, join_ev)
+    _persist_event(task_id, handoff_ev)
+    await websocket.send_json(join_ev)
+    await websocket.send_json(handoff_ev)
+    # 3. 明哲思考中（不持久化 thinking 事件）
     await websocket.send_json({
         "type": "agent_thinking",
         "timestamp": _ts(),
@@ -337,32 +361,44 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                 if not user_msg:
                     greeting = build_initial_greeting()
                     history.append(AIMessage(content=greeting))
-                    await websocket.send_json({
+                    join_ev = {
                         "type": "agent_join",
                         "timestamp": _ts(),
                         "phase": "consult",
                         "agent": "consultant",
-                    })
-                    await websocket.send_json({
+                    }
+                    output_ev = {
                         "type": "agent_output",
                         "timestamp": _ts(),
                         "phase": "consult",
                         "agent": "consultant",
                         "content": greeting,
-                    })
+                    }
+                    _persist_event(task_id, join_ev)
+                    _persist_event(task_id, output_ev)
+                    await websocket.send_json(join_ev)
+                    await websocket.send_json(output_ev)
                 else:
                     history.append(HumanMessage(content=user_msg))
+
+                    # 持久化用户消息
+                    _persist_event(task_id, {
+                        "type": "user_response",
+                        "timestamp": _ts(),
+                        "content": user_msg,
+                    })
 
                     if session.get("consultant_ready") and is_user_confirmation(user_msg):
                         await _run_pipeline_after_confirm(websocket, session)
                         continue
 
-                    await websocket.send_json({
+                    thinking_ev = {
                         "type": "agent_thinking",
                         "timestamp": _ts(),
                         "phase": "consult",
                         "agent": "consultant",
-                    })
+                    }
+                    await websocket.send_json(thinking_ev)
 
                     text, is_ready, summary = await asyncio.to_thread(
                         consult_turn, list(history)
@@ -376,13 +412,15 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
 
                     display_text = strip_summary_block(text, summary)
 
-                    await websocket.send_json({
+                    reply_ev = {
                         "type": "agent_output",
                         "timestamp": _ts(),
                         "phase": "consult",
                         "agent": "consultant",
                         "content": display_text,
-                    })
+                    }
+                    _persist_event(task_id, reply_ev)
+                    await websocket.send_json(reply_ev)
 
             elif action == "pause":
                 from agentcrewchat.graph.pause_manager import pause as pm_pause
