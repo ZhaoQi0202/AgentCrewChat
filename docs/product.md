@@ -13,7 +13,7 @@
 | 核心体验 | **项目群聊**：多 Agent 像项目组同事一样在时间线里分工、接力，降低「单黑盒助手」感 |
 | 平台 | **Windows 优先**，macOS 后续支持 |
 | 安装方式 | **自包含安装包**：使用 [python-build-standalone](https://github.com/indygreg/python-build-standalone) 嵌入式 Python 运行时打包进 Electron 安装包（Electron Builder），用户无需自行安装 Python，装完即用 |
-| 安装目录 | 首次安装时由用户选择安装目录 |
+| 安装目录 | 首次安装时由用户选择安装目录。所有数据（config/data/workspaces）均在安装目录下，不使用 `%APPDATA%` |
 
 ---
 

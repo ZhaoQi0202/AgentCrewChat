@@ -2,16 +2,10 @@ const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
-const os = require("os");
 
 let pythonProcess = null;
 const API_PORT = 9800;
 const HEALTH_URL = `http://127.0.0.1:${API_PORT}/health`;
-
-function getDataDir() {
-  const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-  return path.join(appData, "AgentCrewChat");
-}
 
 function getEmbeddedPython() {
   return path.join(process.resourcesPath || path.join(__dirname, ".."), "resources", "python", "python.exe");
@@ -97,9 +91,8 @@ function startPythonBackend() {
       }
     }
 
-    // 数据目录
-    const dataDir = getDataDir();
-    process.env.AGENTCREWCHAT_ROOT = dataDir;
+    // 数据目录：始终使用软件安装目录（cwd）
+    process.env.AGENTCREWCHAT_ROOT = cwd;
 
     console.log(`[PythonManager] Starting: ${cmd} ${args.join(" ")} (cwd: ${cwd})`);
 
@@ -107,7 +100,7 @@ function startPythonBackend() {
       cwd,
       shell,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, AGENTCREWCHAT_ROOT: dataDir },
+      env: { ...process.env, AGENTCREWCHAT_ROOT: cwd },
     });
 
     let resolved = false;
@@ -196,4 +189,4 @@ function waitForBackend(maxWaitMs = 15000, intervalMs = 500) {
   });
 }
 
-module.exports = { startPythonBackend, stopPythonBackend, waitForBackend, ensureVenv, getDataDir };
+module.exports = { startPythonBackend, stopPythonBackend, waitForBackend, ensureVenv };
