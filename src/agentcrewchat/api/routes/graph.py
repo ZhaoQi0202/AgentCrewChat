@@ -114,7 +114,11 @@ async def _pump_graph_to_ws(
         item = await asyncio.to_thread(q.get)
         if item is _SENTINEL:
             break
-        await websocket.send_json(item)
+        try:
+            await websocket.send_json(item)
+        except Exception:
+            # WS 已断开，事件已由 event_bus 持久化，跳过推送
+            pass
 
 
 async def _run_pipeline_after_confirm(
@@ -228,7 +232,7 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                     cfg,
                 )
 
-                _sessions[session_id] = {"graph": graph, "cfg": cfg, "thread_id": thread_id}
+                _sessions[session_id] = {"graph": graph, "cfg": cfg, "thread_id": thread_id, "ws": websocket, "ws_connected": True}
 
             elif action == "resume":
                 feedback = msg.get("feedback", {})
@@ -348,6 +352,24 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                     decision_type = classify_user_input(user_text, can_reroute)
                     submit_decision(thread_id, decision_type)
 
+            elif action == "reconnect":
+                session = _sessions.get(session_id)
+                if session:
+                    session["ws"] = websocket
+                    session["ws_connected"] = True
+                    await websocket.send_json({
+                        "type": "phase_start",
+                        "timestamp": _ts(),
+                        "phase": session.get("current_phase", "unknown"),
+                        "content": "已重新连接，断线期间的事件请通过历史 API 获取",
+                    })
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "timestamp": _ts(),
+                        "content": "会话不存在，无法重连",
+                    })
+
             elif action == "confirm_start":
                 session = _sessions.get(session_id)
                 if session is None:
@@ -368,7 +390,11 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
                 })
 
     except WebSocketDisconnect:
-        _sessions.pop(session_id, None)
+        # 不删除 session，graph 继续在后台执行
+        session = _sessions.get(session_id)
+        if session:
+            session["ws_connected"] = False
+            session["ws"] = None
     except Exception as exc:
         try:
             await websocket.send_json({
@@ -378,4 +404,8 @@ async def graph_websocket(websocket: WebSocket, session_id: str):
             })
         except Exception:
             pass
-        _sessions.pop(session_id, None)
+        # 异常也不删除 session
+        session = _sessions.get(session_id)
+        if session:
+            session["ws_connected"] = False
+            session["ws"] = None

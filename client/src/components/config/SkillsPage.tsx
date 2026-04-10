@@ -4,7 +4,7 @@ import { useConfigStore } from "../../stores/configStore";
 import { GlassCard } from "../shared/GlassCard";
 
 export function SkillsPage() {
-  const { skills, fetchSkills, importSkill, deleteSkill } = useConfigStore();
+  const { skills, fetchSkills, importSkill, deleteSkill, toggleSkill } = useConfigStore();
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
@@ -101,8 +101,17 @@ export function SkillsPage() {
             </div>
 
             <div className="flex items-center gap-2 pt-2 border-t border-border-subtle">
-              <span className={`flex items-center gap-1 text-[10px] ${skill.enabled ? "text-status-success" : "text-text-muted"}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${skill.enabled ? "bg-status-success" : "bg-text-disabled"}`} />
+              <button
+                onClick={() => toggleSkill(skill.id, !skill.enabled)}
+                className={`w-9 h-5 rounded-full transition-colors relative ${
+                  skill.enabled ? "bg-status-success" : "bg-text-disabled"
+                }`}
+              >
+                <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform absolute top-0.5 ${
+                  skill.enabled ? "translate-x-4" : "translate-x-0.5"
+                }`} />
+              </button>
+              <span className={`text-[10px] ${skill.enabled ? "text-status-success" : "text-text-muted"}`}>
                 {skill.enabled ? "已启用" : "已禁用"}
               </span>
               <div className="flex-1" />

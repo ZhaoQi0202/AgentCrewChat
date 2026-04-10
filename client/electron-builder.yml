@@ -11,7 +11,11 @@ files:
   - package.json
 
 extraResources:
-  - from: resources/backend/agentcrewchat-api
+  - from: resources/python
+    to: python
+    filter:
+      - "**/*"
+  - from: resources/backend
     to: backend
     filter:
       - "**/*"

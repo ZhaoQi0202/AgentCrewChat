@@ -75,6 +75,12 @@ export const skillsApi = {
     request<{ status: string }>(`/config/skills/${id}`, {
       method: "DELETE",
     }),
+
+  toggle: (id: string, enabled: boolean) =>
+    request<SkillEntry>(`/config/skills/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
 };
 
 // ── LLM 设置 ───────────────────────────────────────

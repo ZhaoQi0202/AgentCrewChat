@@ -26,6 +26,7 @@ interface ConfigStore {
   fetchSkills: () => Promise<void>;
   importSkill: (text: string) => Promise<SkillEntry[]>;
   deleteSkill: (id: string) => Promise<void>;
+  toggleSkill: (id: string, enabled: boolean) => Promise<void>;
 
   // LLM 设置
   llmSettings: LlmSettings | null;
@@ -83,6 +84,12 @@ export const useConfigStore = create<ConfigStore>((set) => ({
   deleteSkill: async (id) => {
     await skillsApi.remove(id);
     set((s) => ({ skills: s.skills.filter((sk) => sk.id !== id) }));
+  },
+  toggleSkill: async (id, enabled) => {
+    const updated = await skillsApi.toggle(id, enabled);
+    set((s) => ({
+      skills: s.skills.map((sk) => (sk.id === id ? updated : sk)),
+    }));
   },
 
   // ── LLM 设置 ─────────────────────────────────────

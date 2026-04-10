@@ -138,6 +138,20 @@ async def remove_skill(skill_id: str) -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.patch("/skills/{skill_id}")
+async def toggle_skill(skill_id: str, body: Annotated[dict, Body()]) -> SkillEntry:
+    """切换 Skill 启用/禁用状态。"""
+    cfg = load_all()
+    entry = next((s for s in cfg.skills if s.id == skill_id), None)
+    if entry is None:
+        raise HTTPException(404, f"Skill not found: {skill_id}")
+
+    enabled = body.get("enabled", not entry.enabled)
+    updated = entry.model_copy(update={"enabled": enabled})
+    save_skill_entry(updated)
+    return updated
+
+
 # ── LLM 设置 ─────────────────────────────────────────────
 
 
