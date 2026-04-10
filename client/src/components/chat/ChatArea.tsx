@@ -28,7 +28,8 @@ export function ChatArea() {
   useEffect(() => {
     if (activeTask && activeTask.id !== prevTaskRef.current) {
       prevTaskRef.current = activeTask.id;
-      if (events.length === 0 && !isRunning && !isCollecting) {
+      // 无论当前是否有 events，都重新启动（startCollect 内部会清空旧状态）
+      if (!isRunning || !isCollecting) {
         startCollect(activeTask.id);
       }
     }
@@ -91,8 +92,10 @@ export function ChatArea() {
               case "task_complete":
                 return <SystemMessage key={i} event={event} />;
               case "agent_thinking": {
-                // Skip if a later agent_output from the same agent exists
+                // Skip if a later agent_output from the same agent exists in events or pendingEvents
                 const hasLaterOutput = events.slice(i + 1).some(
+                  (e) => e.type === "agent_output" && e.agent === event.agent
+                ) || pendingEvents.some(
                   (e) => e.type === "agent_output" && e.agent === event.agent
                 );
                 if (hasLaterOutput) return null;

@@ -131,6 +131,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }),
 
   startCollect: async (taskId: string) => {
+    // 先断开旧连接、清空旧状态，防止旧项目数据残留
+    graphSocket.disconnect();
+    set({
+      events: [],
+      pendingEvents: [],
+      currentPhase: null,
+      isRunning: false,
+      isInterrupted: false,
+      isPaused: false,
+      isCollecting: true,
+      isConsultantThinking: false,
+      quickReplies: [],
+    });
+
     // 拉取历史
     let historyEvents: ChatEvent[] = [];
     try {
@@ -138,15 +152,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     } catch { /* 忽略错误 */ }
 
     const sessionId = crypto.randomUUID();
-    set({
-      isCollecting: true,
-      isConsultantThinking: false,
-      isPaused: false,
-      isRunning: false,
-      isInterrupted: false,
-      events: historyEvents,
-      pendingEvents: [],
-    });
+    set({ events: historyEvents });
     graphSocket.connect(sessionId, {
       initial: { action: "collect", task_id: taskId, message: "" },
       onEvent: (event) => get().addEvent(event),

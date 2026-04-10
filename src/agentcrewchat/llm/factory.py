@@ -86,7 +86,7 @@ def get_chat_model(
     s = load_llm_settings(install_root)
     cfg_root = _config_root(install_root)
 
-    # 优先级：显式 connection_id > phase 配置 > 默认连接
+    # 优先级：显式 connection_id > phase 配置 > 默认连接 > 第一个启用连接
     cid = connection_id
     if not cid and phase:
         phase_conns = s.phase_model_connections
@@ -98,6 +98,13 @@ def get_chat_model(
         ent = load_model_connection(cid, config_root=cfg_root)
         if ent is not None and ent.enabled:
             return _chat_from_connection(ent, **kwargs)
+
+    # 兜底：自动使用第一个启用的模型连接
+    from agentcrewchat.config.model_connection_store import list_model_connections
+    for conn in list_model_connections(cfg_root):
+        if conn.enabled and conn.api_key.strip():
+            return _chat_from_connection(conn, **kwargs)
+
     default_p, oa_key, an_key, oa_model, an_model = _resolved_keys(install_root)
     key = (provider or default_p).lower().strip()
     if key == "openai":
