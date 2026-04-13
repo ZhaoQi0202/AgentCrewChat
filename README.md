@@ -148,12 +148,12 @@ uv sync
 
 ## 测试
 
+若仓库已恢复 `tests/` 目录：
+
 ```powershell
 uv sync --group dev
 uv run pytest -q
 ```
-
-当前 72 个测试覆盖：图编译、需求收集、架构设计、工具注册、ReAct Agent、DAG 拓扑排序、审核判定、事件总线等。
 
 ## 常见问题
 
@@ -167,10 +167,9 @@ uv run pytest -q
 
 - **Agent 不调用工具：** 确认已配置 LLM 连接（需要支持 tool calling 的模型，如 GPT-4o、Claude 3.5+）。
 
-## 设计文档
+## 设计与开发文档
 
-- 四阶段流水线架构：`docs/superpowers/specs/2026-04-02-four-phase-pipeline-design.md`
-- 历史设计：`docs/superpowers/specs/` 目录
+见 **[docs/README.md](docs/README.md)**（`product.md`、`frontend.md`、`backend.md`）。
 
 ## 许可证
 

@@ -40,7 +40,7 @@ export default function App() {
         <TitleBar />
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <div className="w-14 h-14 rounded-2xl gradient-brand animate-pulse flex items-center justify-center">
-            <span className="text-white font-bold text-lg">AL</span>
+            <span className="text-white font-bold text-lg">AC</span>
           </div>
           <p className="text-text-secondary text-sm">正在启动后端服务...</p>
           <div className="flex gap-1">
